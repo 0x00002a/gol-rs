@@ -1,16 +1,17 @@
 use anyhow::Result;
+use rayon::iter::*;
 use std::{
     ops::{Deref, DerefMut, Index, IndexMut},
     slice::ChunksMut,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Board {
     buf: Vec<bool>,
     width: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Point {
     pub x: i64,
     pub y: i64,
@@ -88,33 +89,39 @@ impl Board {
     }
 
     pub fn pixels(&self) -> Vec<(Point, &bool)> {
-        let out = Vec::new();
-        for i in 0..self.buf.len() {
-            out.push((
-                Point {
-                    x: (i as u32 % self.height()) as i64,
-                    y: (i as u32 / self.width()) as i64,
-                },
-                &self.buf[i],
-            ))
-        }
-        out
+        self.buf
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                (
+                    Point {
+                        x: (i as u32 % self.height()) as i64,
+                        y: (i as u32 / self.width()) as i64,
+                    },
+                    b,
+                )
+            })
+            .collect()
     }
     pub fn alive(&self) -> usize {
         self.buf.iter().filter(|v| **v).count()
     }
     pub fn pixels_mut(&mut self) -> Vec<(Point, &mut bool)> {
-        let out = Vec::new();
-        for i in 0..self.buf.len() {
-            out.push((
-                Point {
-                    x: (i as u32 % self.height()) as i64,
-                    y: (i as u32 / self.width()) as i64,
-                },
-                &mut self.buf[i],
-            ))
-        }
-        out
+        let h = self.height();
+        let w = self.width();
+        self.buf
+            .iter_mut()
+            .enumerate()
+            .map(|(i, b)| {
+                (
+                    Point {
+                        x: (i as u32 % h) as i64,
+                        y: (i as u32 / w) as i64,
+                    },
+                    b,
+                )
+            })
+            .collect()
     }
 }
 
