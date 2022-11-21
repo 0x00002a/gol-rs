@@ -1,11 +1,12 @@
-use std::ops::{Index, IndexMut};
+use anyhow::Result;
+use std::{
+    ops::{Deref, DerefMut, Index, IndexMut},
+    slice::ChunksMut,
+};
 
 #[derive(Clone)]
-pub struct Board<T>
-where
-    T: Copy,
-{
-    buf: Vec<T>,
+pub struct Board {
+    buf: Vec<bool>,
     width: u32,
 }
 
@@ -23,10 +24,10 @@ pub struct Mask {
     pub h: u32,
 }
 
-impl<T> Board<T>
-where
-    T: Copy,
-{
+impl Board {
+    pub fn new(width: u32, buf: Vec<bool>) -> Self {
+        Board { width, buf }
+    }
     fn pt_to_index(&self, mut pt: Point) -> usize {
         if pt.x < 0 {
             pt.x += self.width as i64;
@@ -48,7 +49,7 @@ where
     pub fn height(&self) -> u32 {
         return (self.buf.len() / (self.width() as usize)) as u32;
     }
-    pub fn neighbors(&self, pt: &Point) -> [T; 8] {
+    pub fn neighbors(&self, pt: &Point) -> [bool; 8] {
         let pts = [
             Point {
                 x: pt.x + 1,
@@ -85,60 +86,45 @@ where
         ];
         return pts.map(|p| self[p]);
     }
-    pub fn split(&mut self, nb: u32) -> ChunksMut<Self> {
-        let masks = Vec::new();
-        let offy = if self.height() < nb {
-            1
-        } else {
-            self.height() / nb
-        };
-        let offx = if self.height() < nb {
-            self.width() / nb
-        } else {
-            0
-        };
-        let slicew = if self.height() < nb {
-            offx
-        } else {
-            self.width()
-        };
-        let mut next_mask = Mask {
-            x: 0,
-            y: 0,
-            w: slicew,
-            h: offy,
-        };
-        for n in 0..nb {
-            if (n == nb - 1) {
-                if next_mask.x + next_mask.w < self.width() {
-                    next_mask.w += self.width() - (next_mask.x + next_mask.w)
-                }
 
-                if next_mask.y + next_mask.h < self.height() {
-                    next_mask.h += self.height() - (next_mask.y + next_mask.h)
-                }
-            }
-            masks.push(next_mask);
-            next_mask.x += offx;
-            next_mask.y += offy;
+    pub fn pixels(&self) -> Vec<(Point, &bool)> {
+        let out = Vec::new();
+        for i in 0..self.buf.len() {
+            out.push((
+                Point {
+                    x: (i as u32 % self.height()) as i64,
+                    y: (i as u32 / self.width()) as i64,
+                },
+                &self.buf[i],
+            ))
         }
+        out
+    }
+    pub fn alive(&self) -> usize {
+        self.buf.iter().filter(|v| **v).count()
+    }
+    pub fn pixels_mut(&mut self) -> Vec<(Point, &mut bool)> {
+        let out = Vec::new();
+        for i in 0..self.buf.len() {
+            out.push((
+                Point {
+                    x: (i as u32 % self.height()) as i64,
+                    y: (i as u32 / self.width()) as i64,
+                },
+                &mut self.buf[i],
+            ))
+        }
+        out
     }
 }
 
-impl<T> Index<Point> for Board<T>
-where
-    T: Copy,
-{
-    type Output = T;
-
+impl Index<Point> for Board {
+    type Output = bool;
     fn index(&self, index: Point) -> &Self::Output {
         return &self.buf[self.pt_to_index(index)];
     }
 }
-impl<T> IndexMut<Point> for Board<T>
-where
-    T: Copy,
-{
+impl IndexMut<Point> for Board {
     fn index_mut(&mut self, index: Point) -> &mut Self::Output {
         let idx = self.pt_to_index(index);
         return &mut self.buf[idx];
