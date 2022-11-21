@@ -88,7 +88,7 @@ impl Board {
         return pts.map(|p| self[p]);
     }
 
-    pub fn pixels(&self) -> Vec<(Point, &bool)> {
+    pub fn pixels(&self) -> Vec<(Point, bool)> {
         self.buf
             .iter()
             .enumerate()
@@ -98,7 +98,7 @@ impl Board {
                         x: (i as u32 % self.height()) as i64,
                         y: (i as u32 / self.width()) as i64,
                     },
-                    b,
+                    *b,
                 )
             })
             .collect()

@@ -1,4 +1,6 @@
 use std::io::{BufReader, Read, Write};
+use std::rc::Rc;
+use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, ensure, Result};
@@ -6,7 +8,10 @@ use gol::{Mask, Point};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 
+use crate::render::Renderer;
+
 mod gol;
+mod render;
 
 type Board = gol::Board;
 
@@ -81,7 +86,7 @@ fn write_pgm(b: &Board, f: &mut dyn Write) -> Result<()> {
     let px = b
         .pixels()
         .into_iter()
-        .map(|p| if *p.1 { 255 } else { 0 })
+        .map(|p| if p.1 { 255 } else { 0 })
         .collect::<Vec<_>>();
     f.write_all(&px)?;
     Ok(())
@@ -93,14 +98,35 @@ fn main() {
     let mut infile = std::fs::File::open(args.get(1).expect("no input filename?"))
         .expect("failed to open input file");
     let initial = read_pgm(&mut infile).expect("failed to read pgm input");
-    let mut curr = initial;
-    let mut turn = 0;
+    //let mut turn = 0;
     println!("running");
-    mk_pool(threads as usize)
-        .expect("failed to create threadpool")
-        .install(|| loop {
-            curr = run_turn(curr, threads).expect("failed to run turn");
-            turn += 1;
-            println!("ran turn {} alive {}", turn, curr.alive());
+    let (sx, tx) = std::sync::mpsc::channel();
+    thread::scope(move |s| {
+        let mut curr = initial.clone();
+        s.spawn(move || {
+            mk_pool(threads as usize)
+                .expect("failed to create threadpool")
+                .install(move || loop {
+                    curr = run_turn(curr, threads).expect("failed to run turn");
+                    //turn += 1;
+                    //println!("ran turn {} alive {}", turn, curr.alive());
+                    sx.send(curr.clone()).expect("failed to send");
+                });
         });
+        let r = render::cursive::CursiveRender::new(&initial);
+        let mut rs = Arc::new(Rc::new(r));
+        let r = rs.clone();
+        s.spawn(move || {
+            while r.running() {
+                r.tick();
+            }
+        });
+
+        /*while r.tick() {
+            /*let b = tx.try_recv();
+            if b.is_ok() {
+                r = r.render_board(&b.unwrap());
+            }*/
+        }*/
+    });
 }
