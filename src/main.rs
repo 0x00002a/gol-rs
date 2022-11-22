@@ -4,9 +4,23 @@ use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, ensure, Result};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use gol::{Mask, Point};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
+use std::{io, time::Duration};
+use tui::layout::Rect;
+use tui::style::{Color, Style};
+use tui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders, Widget},
+    Terminal,
+};
 
 use crate::render::Renderer;
 
@@ -39,9 +53,9 @@ fn run_turn(board: Board, threads: u32) -> Result<Board> {
         .pixels_mut()
         .par_chunks_mut(chunk_size)
         .for_each(|cs| {
-            for c in cs {
+            for (pt, v) in cs {
                 //dbg!(*c.1, calc_px(&board, &c.0));
-                *c.1 = calc_px(&board, &c.0);
+                **v = calc_px(&board, &pt);
             }
         });
     Ok(outboard)
@@ -91,6 +105,10 @@ fn write_pgm(b: &Board, f: &mut dyn Write) -> Result<()> {
     f.write_all(&px)?;
     Ok(())
 }
+enum Event {
+    TurnEnd(Board),
+    KeyPress(char),
+}
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
@@ -101,6 +119,7 @@ fn main() {
     //let mut turn = 0;
     println!("running");
     let (sx, tx) = std::sync::mpsc::channel();
+    let bsx = sx.clone();
     thread::scope(move |s| {
         let mut curr = initial.clone();
         s.spawn(move || {
@@ -110,17 +129,67 @@ fn main() {
                     curr = run_turn(curr, threads).expect("failed to run turn");
                     //turn += 1;
                     //println!("ran turn {} alive {}", turn, curr.alive());
-                    sx.send(curr.clone()).expect("failed to send");
+                    bsx.send(Event::TurnEnd(curr.clone()))
+                        .expect("failed to send");
                 });
         });
-        let r = render::cursive::CursiveRender::new(&initial);
-        let mut rs = Arc::new(Rc::new(r));
-        let r = rs.clone();
+        let ksx = sx.clone();
         s.spawn(move || {
-            while r.running() {
-                r.tick();
+            let mut stdin = std::io::stdin();
+            let mut buf: [u8; 1] = [0];
+            let _ = stdin.lock();
+            loop {
+                stdin.read_exact(&mut buf).unwrap();
+                ksx.send(Event::KeyPress(buf[0] as char)).unwrap();
             }
         });
+        //let mut turn = 0;
+        //loop {
+        //let b = tx.recv().unwrap();
+        //turn += 1;
+        ////let mut out = std::fs::File::create("out.pgm").unwrap();
+        //println!("turn: {}, alive: {}", turn, b.alive());
+        ////write_pgm(&b, &mut out).unwrap();
+        //}
+        enable_raw_mode().expect("failed to enable raw mode");
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut running = true;
+        while running {
+            let ev = tx.recv().unwrap();
+            match ev {
+                Event::TurnEnd(b) => {
+                    terminal
+                        .draw(|f| {
+                            b.pixels().into_iter().for_each(|(pt, v)| {
+                                let c = if v { Color::White } else { Color::Black };
+                                let block = Block::default().style(Style::default().bg(c));
+                                let mut rpt = Rect::default();
+                                rpt.x = pt.x as u16;
+                                rpt.y = pt.y as u16;
+                                rpt.width = 1;
+                                rpt.height = 1;
+                                let tsize = f.size();
+                                if rpt.right() <= tsize.right() && rpt.bottom() <= tsize.bottom() {
+                                    f.render_widget(block, rpt);
+                                }
+                            });
+                        })
+                        .expect("failed to render frame");
+                }
+                Event::KeyPress(_) => running = false,
+            }
+        }
+        disable_raw_mode().unwrap();
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .unwrap();
+        terminal.show_cursor().unwrap();
 
         /*while r.tick() {
             /*let b = tx.try_recv();

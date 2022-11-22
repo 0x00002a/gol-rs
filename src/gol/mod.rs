@@ -39,7 +39,7 @@ impl Board {
         if pt.y < 0 {
             pt.y += self.height() as i64;
         }
-        if pt.y > self.height() as i64 {
+        if pt.y >= self.height() as i64 {
             pt.y -= self.height() as i64;
         }
         return ((pt.y * self.width as i64) + pt.x) as usize;
@@ -57,35 +57,35 @@ impl Board {
                 y: pt.y,
             },
             Point {
-                x: pt.x + 1,
+                x: pt.x - 1,
                 y: pt.y,
             },
             Point {
-                x: pt.x + 1,
-                y: pt.y,
+                x: pt.x,
+                y: pt.y + 1,
+            },
+            Point {
+                x: pt.x,
+                y: pt.y - 1,
             },
             Point {
                 x: pt.x + 1,
-                y: pt.y,
+                y: pt.y - 1,
             },
             Point {
                 x: pt.x + 1,
-                y: pt.y,
+                y: pt.y + 1,
             },
             Point {
-                x: pt.x + 1,
-                y: pt.y,
+                x: pt.x - 1,
+                y: pt.y + 1,
             },
             Point {
-                x: pt.x + 1,
-                y: pt.y,
-            },
-            Point {
-                x: pt.x + 1,
-                y: pt.y,
+                x: pt.x - 1,
+                y: pt.y - 1,
             },
         ];
-        return pts.map(|p| self[p]);
+        pts.map(|p| self[p])
     }
 
     pub fn pixels(&self) -> Vec<(Point, bool)> {
