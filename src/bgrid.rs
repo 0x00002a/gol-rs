@@ -12,7 +12,7 @@ impl Frame {
         Self { pts, view }
     }
 
-    pub fn render(&self) -> Vec<(Point, char)> {
+    pub fn render(&self, background: char) -> Vec<(Point, char)> {
         let bounds = self.view.clone().scale(2);
         (0..self.view.h)
             .flat_map(|y| {
@@ -68,7 +68,7 @@ impl Frame {
                     } else if alive[3] {
                         '▗'
                     } else {
-                        ' '
+                        background
                     };
                     (
                         Point {
@@ -99,6 +99,14 @@ impl DerefMut for Frame {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
+    trait FrameExt {
+        fn render_f0(&self) -> char;
+    }
+    impl FrameExt for Frame {
+        fn render_f0(&self) -> char {
+            self.render(' ')[0].1
+        }
+    }
 
     use super::*;
     const empty: [bool; 16] = [
@@ -106,24 +114,32 @@ mod test {
         false, false, false,
     ];
     fn empty_frame() -> Frame {
-        Frame::new(Board::new(4, empty.into()))
+        Frame::new(
+            Board::new(4, empty.into()),
+            Mask {
+                x: 0,
+                y: 0,
+                w: 4,
+                h: 4,
+            },
+        )
     }
     #[test]
     fn test_individual() {
         let mut f = empty_frame();
         f[Point { x: 0, y: 0 }] = true;
-        assert_eq!(f.render().len(), 4);
-        assert_eq!(f.render()[0].1, '▘');
+        assert_eq!(f.render(' ').len(), 16);
+        assert_eq!(f.render_f0(), '▘');
 
         f[Point { x: 1, y: 1 }] = true;
-        assert_eq!(f.render()[0].1, '▚');
+        assert_eq!(f.render_f0(), '▚');
 
         f[Point { x: 1, y: 0 }] = true;
-        assert_eq!(f.render()[0].1, '▜');
+        assert_eq!(f.render_f0(), '▜');
         f[Point { x: 1, y: 0 }] = false;
 
         f[Point { x: 0, y: 1 }] = true;
-        assert_eq!(f.render()[0].1, '▙');
+        assert_eq!(f.render_f0(), '▙');
         f[Point { x: 0, y: 1 }] = false;
     }
     #[test]
@@ -143,13 +159,13 @@ mod test {
             }
             if pts.len() > 0 {
                 assert_ne!(
-                    f.render()[0].1,
+                    f.render_f0(),
                     ' ',
                     "defined char for point combo: {:?}",
                     pts
                 );
             } else {
-                assert_eq!(f.render()[0].1, ' ');
+                assert_eq!(f.render_f0(), ' ');
             }
         }
     }
@@ -159,14 +175,14 @@ mod test {
         f[Point { x: 0, y: 1 }] = true;
         f[Point { x: 1, y: 0 }] = true;
         f[Point { x: 1, y: 1 }] = true;
-        assert_eq!(f.render()[0].1, '▟');
+        assert_eq!(f.render_f0(), '▟');
     }
     #[test]
     fn test_compress() {
         let mut f = empty_frame();
         f[Point { x: 0, y: 0 }] = true;
         f[Point { x: 2, y: 0 }] = true;
-        let frame = f.render();
+        let frame = f.render(' ');
         assert_eq!(frame[0].0, Point { x: 0, y: 0 });
         assert_eq!(frame[1].0, Point { x: 1, y: 0 });
         assert_eq!(frame[2].0, Point { x: 2, y: 0 });
