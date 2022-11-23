@@ -30,18 +30,7 @@ impl Board {
         Board { width, buf }
     }
     fn pt_to_index(&self, mut pt: Point) -> usize {
-        if pt.x < 0 {
-            pt.x += self.width as i64;
-        }
-        if pt.x >= self.width as i64 {
-            pt.x -= self.width as i64;
-        }
-        if pt.y < 0 {
-            pt.y += self.height() as i64;
-        }
-        if pt.y >= self.height() as i64 {
-            pt.y -= self.height() as i64;
-        }
+        pt.remap(self.width(), self.height());
         return ((pt.y * self.width as i64) + pt.x) as usize;
     }
     pub fn width(&self) -> u32 {
@@ -135,5 +124,22 @@ impl IndexMut<Point> for Board {
     fn index_mut(&mut self, index: Point) -> &mut Self::Output {
         let idx = self.pt_to_index(index);
         return &mut self.buf[idx];
+    }
+}
+
+impl Point {
+    pub fn remap(&mut self, w: u32, h: u32) {
+        if self.x < 0 {
+            self.x += w as i64;
+        }
+        if self.x >= w as i64 {
+            self.x -= w as i64;
+        }
+        if self.y < 0 {
+            self.y += h as i64;
+        }
+        if self.y >= h as i64 {
+            self.y -= h as i64;
+        }
     }
 }
