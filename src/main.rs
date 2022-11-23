@@ -149,9 +149,7 @@ fn main() -> Result<()> {
         let panic_buf = panic_buf.clone();
         Box::new(move |info| {
             let mut panic_buf = panic_buf.lock().unwrap();
-            if let Some(s) = info.payload().downcast_ref::<String>() {
-                panic_buf.push_str(s);
-            }
+            panic_buf.push_str(&info.to_string());
         })
     });
     let rs = panic::catch_unwind(|| {
@@ -294,7 +292,7 @@ fn main() -> Result<()> {
         })
     });
     match rs {
-        Err(_) => println!("panic: {}", panic_buf.lock().unwrap()),
+        Err(_) => println!("{}", panic_buf.lock().unwrap()),
         _ => (),
     };
     Ok(())
