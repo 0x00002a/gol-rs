@@ -11,7 +11,7 @@ impl Frame {
         Self { pts }
     }
 
-    fn render(&self) -> Vec<(Point, char)> {
+    pub fn render(&self) -> Vec<(Point, char)> {
         (0..self.pts.height())
             .step_by(2)
             .flat_map(|y| {

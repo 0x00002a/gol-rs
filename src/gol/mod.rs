@@ -31,12 +31,19 @@ pub struct Mask {
     pub h: u32,
 }
 impl Mask {
-    fn right(&self) -> u32 {
+    pub fn right(&self) -> u32 {
         self.x + self.w
     }
 
-    fn bottom(&self) -> u32 {
+    pub fn bottom(&self) -> u32 {
         self.y + self.h
+    }
+    pub fn dy(&self) -> u32 {
+        self.h.abs_diff(self.y)
+    }
+
+    pub fn dx(&self) -> u32 {
+        self.w.abs_diff(self.x)
     }
 }
 
@@ -49,17 +56,6 @@ impl Board {
         return ((pt.y * self.width as i64) + pt.x) as usize;
     }
     pub fn slice(&self, sect: &Mask) -> Result<Self> {
-        [(sect.right(), self.width()), (sect.bottom(), self.height())]
-            .into_iter()
-            .map(|(l, r)| {
-                if l > r {
-                    Err(anyhow!("section out of bounds {} > {}", l, r))
-                } else {
-                    Ok(())
-                }
-            })
-            .collect::<Result<_>>()?;
-
         let mut out = Vec::new();
         out.reserve((sect.w * sect.h) as usize);
         for y in sect.y..sect.bottom() {

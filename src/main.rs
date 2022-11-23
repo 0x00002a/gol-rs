@@ -8,10 +8,12 @@ use std::sync::Arc;
 use std::thread::{self, sleep};
 
 use anyhow::{anyhow, ensure, Result};
+use bgrid::Frame;
 use gol::{Mask, Point};
 use pancurses::{curs_set, endwin, init_pair, noecho, start_color, Input, COLOR_BLACK};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
+use scopeguard::defer;
 use std::{io, time::Duration};
 
 mod bgrid;
@@ -144,7 +146,7 @@ fn main() -> Result<()> {
     let (sx, tx) = std::sync::mpsc::channel();
     let bsx = sx.clone();
     let running = AtomicBool::new(true);
-    thread::scope(|s| {
+    thread::scope(|s| -> Result<()> {
         let mut curr = initial.clone();
         let running = &running;
         s.spawn(move || -> Result<()> {
@@ -188,68 +190,66 @@ fn main() -> Result<()> {
                 }
             }
         });
-        start_color();
-        init_pair(
-            CellColours::Dead as i16,
-            pancurses::COLOR_BLACK,
-            pancurses::COLOR_BLACK,
-        );
-        init_pair(
-            CellColours::Alive as i16,
-            pancurses::COLOR_WHITE,
-            pancurses::COLOR_WHITE,
-        );
-        init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
+        {
+            defer! { running.store(false, sync::atomic::Ordering::SeqCst); }
+            start_color();
+            init_pair(0, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
+            init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
 
-        let mut offset = Point { x: 0, y: 0 };
-        while running.load(sync::atomic::Ordering::SeqCst) {
-            let ev = tx.recv().unwrap();
-            match ev {
-                Event::TurnEnd(b) => {
-                    turn += 1;
-                    offset.remap(b.width(), b.height());
-                    win.color_set(CellColours::Dead as i16);
-                    for py in 0..win.get_max_y() {
-                        for px in 0..win.get_max_x() {
-                            let pt = Point {
-                                x: px as i64 + offset.x,
-                                y: py as i64 + offset.y,
-                            };
-                            let v = b[pt.clone()];
-
-                            let c = if v {
-                                CellColours::Alive
-                            } else {
-                                CellColours::Dead
-                            };
-                            win.color_set(c as i16);
-                            win.mvaddch(py, px, ' ');
-                        }
+            let mut offset = Point { x: 0, y: 0 };
+            while running.load(sync::atomic::Ordering::SeqCst) {
+                let ev = tx.recv().unwrap();
+                match ev {
+                    Event::TurnEnd(b) => {
+                        turn += 1;
+                        offset.remap(b.width(), b.height());
+                        let viewport = Mask {
+                            x: (offset.x - 2) as u32,
+                            y: (offset.y - 2) as u32,
+                            w: (win.get_max_x() + 2) as u32,
+                            h: (win.get_max_y() + 2) as u32,
+                        };
+                        let frame = Frame::new(b.slice(&viewport)?);
+                        win.color_set(0);
+                        frame
+                            .render()
+                            .into_iter()
+                            .filter(|(pt, _)| {
+                                let mut pt = pt.clone();
+                                pt.remap(b.width(), b.height());
+                                pt.x >= offset.x
+                                    && pt.y >= offset.y
+                                    && pt.x <= win.get_max_x() as i64
+                                    && pt.y <= win.get_max_y() as i64
+                            })
+                            .for_each(|(pt, c)| {
+                                win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c));
+                            });
+                        win.color_set(3);
+                        win.mvaddstr(0, 0, format!("turn  {}", turn));
+                        win.mvaddstr(1, 0, format!("alive {}", b.alive()));
+                        win.refresh();
                     }
-                    win.color_set(3);
-                    win.mvaddstr(0, 0, format!("turn  {}", turn));
-                    win.mvaddstr(1, 0, format!("alive {}", b.alive()));
-                    win.refresh();
+                    Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
+                        offset.x -= 1
+                    }
+                    Event::KeyPress(Input::KeyRight) | Event::KeyPress(Input::Character('l')) => {
+                        offset.x += 1
+                    }
+                    Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
+                        offset.y -= 1
+                    }
+                    Event::KeyPress(Input::KeyDown) | Event::KeyPress(Input::Character('j')) => {
+                        offset.y += 1
+                    }
+                    Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
+                        running.store(false, sync::atomic::Ordering::SeqCst);
+                    }
+                    _ => (),
                 }
-                Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
-                    offset.x -= 1
-                }
-                Event::KeyPress(Input::KeyRight) | Event::KeyPress(Input::Character('l')) => {
-                    offset.x += 1
-                }
-                Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
-                    offset.y -= 1
-                }
-                Event::KeyPress(Input::KeyDown) | Event::KeyPress(Input::Character('j')) => {
-                    offset.y += 1
-                }
-                Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
-                    running.store(false, sync::atomic::Ordering::SeqCst);
-                }
-                _ => (),
             }
         }
-    });
-    endwin();
+        Ok(())
+    })?;
     Ok(())
 }

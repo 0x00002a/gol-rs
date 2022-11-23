@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.66"
-pancurses = "0.17.0"
+itertools = "0.10.5"
+pancurses = { version = "0.17.0", features = ["wide"] }
 rayon = "1.6.0"
+scopeguard = "1.1.0"
