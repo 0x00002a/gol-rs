@@ -9,7 +9,7 @@ use std::thread::{self, sleep};
 
 use anyhow::{anyhow, ensure, Result};
 use gol::{Mask, Point};
-use pancurses::{curs_set, endwin, init_pair, start_color, Input, COLOR_BLACK};
+use pancurses::{curs_set, endwin, init_pair, noecho, start_color, Input, COLOR_BLACK};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 use std::{io, time::Duration};
@@ -166,6 +166,7 @@ fn main() -> Result<()> {
         win.clear();
         win.refresh();
         curs_set(0);
+        noecho();
         let ksx = sx.clone();
         s.spawn(move || {
             let w = pancurses::newwin(0, 0, 0, 0);
@@ -225,7 +226,8 @@ fn main() -> Result<()> {
                         }
                     }
                     win.color_set(3);
-                    win.mvaddstr(0, 0, format!("turn {}", turn));
+                    win.mvaddstr(0, 0, format!("turn  {}", turn));
+                    win.mvaddstr(1, 0, format!("alive {}", b.alive()));
                     win.refresh();
                 }
                 Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
