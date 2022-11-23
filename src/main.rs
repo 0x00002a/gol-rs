@@ -2,12 +2,14 @@ use std::cell::Cell;
 use std::io::{BufReader, Read, Write};
 use std::ops::Deref;
 use std::rc::Rc;
+use std::sync;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::{self, sleep};
 
 use anyhow::{anyhow, ensure, Result};
 use gol::{Mask, Point};
-use pancurses::{endwin, init_pair, start_color, Input, COLOR_BLACK};
+use pancurses::{curs_set, endwin, init_pair, start_color, Input, COLOR_BLACK};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 use std::{io, time::Duration};
@@ -49,7 +51,6 @@ fn run_turn(board: Board, threads: u32) -> Result<Board> {
 }
 
 fn read_pgm(f: &mut dyn Read) -> Result<Board> {
-    println!("reading pgm");
     let buf = BufReader::new(f);
     let bytes: Vec<u8> = buf
         .bytes()
@@ -141,17 +142,16 @@ fn main() -> Result<()> {
     let mut turn = 0;
     let (sx, tx) = std::sync::mpsc::channel();
     let bsx = sx.clone();
-    thread::scope(move |s| {
+    let running = AtomicBool::new(true);
+    thread::scope(|s| {
         let mut curr = initial.clone();
-        let mut running = true;
+        let running = &running;
         s.spawn(move || -> Result<()> {
             mk_pool(threads as usize)
                 .expect("failed to create threadpool")
                 .install(move || -> Result<()> {
-                    while running {
+                    while running.load(sync::atomic::Ordering::SeqCst) {
                         curr = run_turn(curr, threads).expect("failed to run turn");
-                        //turn += 1;
-                        //println!("ran turn {} alive {}", turn, curr.alive());
                         let r = bsx.send(Event::TurnEnd(curr.clone()));
                         if r.is_err() {
                             break;
@@ -165,12 +165,13 @@ fn main() -> Result<()> {
         let win = SessionWin::initscr();
         win.clear();
         win.refresh();
+        curs_set(0);
         let ksx = sx.clone();
         s.spawn(move || {
             let w = pancurses::newwin(0, 0, 0, 0);
             w.nodelay(true);
             w.keypad(true);
-            while running {
+            while running.load(sync::atomic::Ordering::SeqCst) {
                 match w.getch() {
                     None => {
                         sleep(Duration::from_millis(1));
@@ -199,7 +200,7 @@ fn main() -> Result<()> {
         init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
 
         let mut offset = Point { x: 0, y: 0 };
-        while running {
+        while running.load(sync::atomic::Ordering::SeqCst) {
             let ev = tx.recv().unwrap();
             match ev {
                 Event::TurnEnd(b) => {
@@ -240,7 +241,7 @@ fn main() -> Result<()> {
                     offset.y += 1
                 }
                 Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
-                    running = false
+                    running.store(false, sync::atomic::Ordering::SeqCst);
                 }
                 _ => (),
             }
