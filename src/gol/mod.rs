@@ -75,8 +75,16 @@ impl Board {
         Board { width, buf }
     }
     fn pt_to_index(&self, mut pt: Point) -> usize {
+        let orig = pt.clone();
         pt.remap(self.width(), self.height());
-        return ((pt.y * self.width as i64) + pt.x) as usize;
+        let index = ((pt.y * self.width as i64) + pt.x) as usize;
+        assert!(
+            index < (self.width() * self.height()) as usize,
+            "pt {} inside bounds (adj: {})",
+            pt,
+            orig
+        );
+        index
     }
     pub fn slice(&self, sect: &Mask) -> Result<Self> {
         let mut out = Vec::new();
@@ -192,19 +200,20 @@ impl IndexMut<Point> for Board {
 }
 
 impl Point {
-    pub fn remap(&mut self, w: u32, h: u32) {
-        if self.x < 0 {
-            self.x += w as i64;
+    pub fn remap<T>(&mut self, w: T, h: T)
+    where
+        T: Into<i64>,
+    {
+        let w = w.into();
+        let h = h.into();
+        while self.x < 0 {
+            self.x += w;
         }
-        if self.x >= w as i64 {
-            self.x -= w as i64;
+        while self.y < 0 {
+            self.y += h;
         }
-        if self.y < 0 {
-            self.y += h as i64;
-        }
-        if self.y >= h as i64 {
-            self.y -= h as i64;
-        }
+        self.x %= w;
+        self.y %= h;
     }
 }
 
@@ -227,5 +236,19 @@ mod tests {
         assert_eq!(sliced.width(), 2);
         assert_eq!(sliced.height(), 2);
         Ok(())
+    }
+    #[test]
+    fn test_remap() {
+        let w = 10 as i64;
+        let h = 10 as i64;
+        let mut pt = Point { x: w * 2, y: 0 };
+        pt.remap(w, h);
+        assert!(w * pt.x + pt.y < w * h);
+
+        pt.x = 1;
+        pt.y = -2;
+        pt.remap(w, h);
+        assert_eq!(pt.x, 1);
+        assert_eq!(pt.y, h - 2);
     }
 }
