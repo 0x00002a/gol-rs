@@ -131,11 +131,13 @@ struct Colour {
     b: u8,
 }
 
-enum CellColours {
-    Dead = 0,
-    Alive = 1,
+fn check(r: i32) -> Result<()> {
+    if r != 0 {
+        Err(anyhow!("check failed"))
+    } else {
+        Ok(())
+    }
 }
-
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     let threads = args.get(2).and_then(|m| m.parse().ok()).unwrap_or(4);
@@ -203,31 +205,38 @@ fn main() -> Result<()> {
                     Event::TurnEnd(b) => {
                         turn += 1;
                         offset.remap(b.width(), b.height());
-                        let viewport = Mask {
-                            x: (offset.x - 2) as u32,
-                            y: (offset.y - 2) as u32,
-                            w: (win.get_max_x() + 2) as u32,
-                            h: (win.get_max_y() + 2) as u32,
+                        let mut viewport = Mask {
+                            x: (offset.x) as u32,
+                            y: (offset.y) as u32,
+                            w: (win.get_max_x()) as u32,
+                            h: (win.get_max_y()) as u32,
                         };
+                        if viewport.x % 2 == 1 {
+                            viewport.x -= 1;
+                        }
+                        if viewport.y % 2 == 1 {
+                            viewport.y -= 1;
+                        }
+                        if viewport.w % 2 == 1 {
+                            viewport.w -= 1;
+                        }
+                        if viewport.h % 2 == 1 {
+                            viewport.h -= 1;
+                        }
                         let frame = Frame::new(b.slice(&viewport)?);
                         win.color_set(0);
+                        win.clear();
                         frame
                             .render()
                             .into_iter()
-                            .filter(|(pt, _)| {
-                                let mut pt = pt.clone();
-                                pt.remap(b.width(), b.height());
-                                pt.x >= offset.x
-                                    && pt.y >= offset.y
-                                    && pt.x <= win.get_max_x() as i64
-                                    && pt.y <= win.get_max_y() as i64
+                            .map(|(pt, c)| {
+                                check(win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c)))
                             })
-                            .for_each(|(pt, c)| {
-                                win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c));
-                            });
+                            .collect::<Result<_>>()?;
                         win.color_set(3);
                         win.mvaddstr(0, 0, format!("turn  {}", turn));
                         win.mvaddstr(1, 0, format!("alive {}", b.alive()));
+                        win.mvaddstr(2, 0, format!("mw {} mh {}", viewport.w, viewport.h));
                         win.refresh();
                     }
                     Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
