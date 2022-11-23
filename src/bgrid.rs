@@ -109,13 +109,13 @@ mod test {
     }
 
     use super::*;
-    const empty: [bool; 16] = [
+    const EMPTY: [bool; 16] = [
         false, false, false, false, false, false, false, false, false, false, false, false, false,
         false, false, false,
     ];
     fn empty_frame() -> Frame {
         Frame::new(
-            Board::new(4, empty.into()),
+            Board::new(4, EMPTY.into()),
             Mask {
                 x: 0,
                 y: 0,

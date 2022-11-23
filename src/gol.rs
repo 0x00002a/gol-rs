@@ -1,9 +1,7 @@
-use anyhow::{anyhow, Result};
-use rayon::iter::*;
+use anyhow::Result;
 use std::{
     fmt::Display,
-    ops::{Deref, DerefMut, Index, IndexMut, Mul},
-    slice::ChunksMut,
+    ops::{Index, IndexMut},
 };
 
 #[derive(Clone, Debug)]
@@ -86,6 +84,7 @@ impl Board {
         );
         index
     }
+    #[allow(dead_code)]
     pub fn slice(&self, sect: &Mask) -> Result<Self> {
         let mut out = Vec::new();
         out.reserve((sect.w * sect.h) as usize);
@@ -149,6 +148,7 @@ impl Board {
         pts.map(|p| self[p])
     }
 
+    #[allow(dead_code)]
     pub fn pixels(&self) -> Vec<(Point, bool)> {
         self.buf
             .iter()

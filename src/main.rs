@@ -1,7 +1,5 @@
-use std::cell::Cell;
-use std::io::{stderr, BufReader, Read, Write};
+use std::io::{BufReader, Read};
 use std::ops::Deref;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
@@ -12,13 +10,11 @@ use args::Args;
 use bgrid::Frame;
 use clap::Parser;
 use gol::{Mask, Point};
-use pancurses::{
-    curs_set, endwin, init_pair, noecho, reset_shell_mode, start_color, Input, COLOR_BLACK,
-};
+use pancurses::{curs_set, endwin, init_pair, noecho, start_color, Input};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 use scopeguard::defer;
-use std::{io, time::Duration};
+use std::time::Duration;
 
 mod args;
 mod bgrid;
@@ -91,16 +87,6 @@ fn read_pgm(f: &mut dyn Read) -> Result<Board> {
             .collect(),
     ))
 }
-fn write_pgm(b: &Board, f: &mut dyn Write) -> Result<()> {
-    f.write_all(&format!("P5\n{} {} 255\n", b.width(), b.height()).as_bytes())?;
-    let px = b
-        .pixels()
-        .into_iter()
-        .map(|p| if p.1 { 255 } else { 0 })
-        .collect::<Vec<_>>();
-    f.write_all(&px)?;
-    Ok(())
-}
 enum Event {
     TurnEnd(Board),
     KeyPress(Input),
@@ -127,13 +113,6 @@ impl SessionWin {
         start_color();
         Self { win }
     }
-}
-
-#[derive(Copy, Clone)]
-struct Colour {
-    r: u8,
-    g: u8,
-    b: u8,
 }
 
 fn check(r: i32) -> Result<()> {
