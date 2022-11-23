@@ -12,7 +12,7 @@ pub struct Args {
     #[arg(
         long = "bg",
         default_value_t = ' ',
-        help = "character to use for completely regions"
+        help = "character to use for completely dead regions"
     )]
     pub background: char,
 }
