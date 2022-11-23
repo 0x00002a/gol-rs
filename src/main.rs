@@ -251,7 +251,7 @@ fn main() -> Result<()> {
                                             screen_view
                                         ))
                                     } else {
-                                        check(win.mvaddstr(
+                                        let r = check(win.mvaddstr(
                                             pt.y as i32,
                                             pt.x as i32,
                                             String::from(c),
@@ -263,7 +263,15 @@ fn main() -> Result<()> {
                                                 screen_view,
                                                 e
                                             )
-                                        })
+                                        });
+                                        if r.is_ok()
+                                            || pt.x == (win.get_max_x() - 1) as i64
+                                                && pt.y == (win.get_max_y() - 1) as i64
+                                        {
+                                            Ok(())
+                                        } else {
+                                            r
+                                        }
                                     }
                                 })
                                 .collect::<Result<_>>()?;
@@ -293,7 +301,7 @@ fn main() -> Result<()> {
     });
     match rs {
         Err(_) => println!("{}", panic_buf.lock().unwrap()),
-        _ => (),
+        Ok(r) => r?,
     };
     Ok(())
 }
