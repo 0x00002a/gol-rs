@@ -1,29 +1,35 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::gol::{Board, Point};
+use crate::gol::{Board, Mask, Point};
 
 pub struct Frame {
     pts: Board,
+    view: Mask,
 }
 
 impl Frame {
-    pub fn new(pts: Board) -> Self {
-        Self { pts }
+    pub fn new(pts: Board, view: Mask) -> Self {
+        Self { pts, view }
     }
 
     pub fn render(&self) -> Vec<(Point, char)> {
-        (0..self.pts.height())
-            .step_by(2)
+        (0..self.view.bottom())
             .flat_map(|y| {
-                (0..self.pts.width()).step_by(2).map(move |x| {
+                (0..self.view.right()).map(move |x| {
                     let alive = (0..2)
                         .flat_map(|oy| {
                             (0..2).map(move |ox| Point {
-                                x: (x + ox) as i64,
-                                y: (y + oy) as i64,
+                                x: (x * 2 + ox) as i64,
+                                y: (y * 2 + oy) as i64,
                             })
                         })
-                        .map(|p| self.pts[p])
+                        .map(|p| {
+                            if !self.view.contains(&p) {
+                                false
+                            } else {
+                                self.pts[p]
+                            }
+                        })
                         .collect::<Vec<_>>();
                     // 0: top left
                     // 1: top right
@@ -60,7 +66,7 @@ impl Frame {
                     } else if alive[3] {
                         '▗'
                     } else {
-                        ' '
+                        '░'
                     };
                     (
                         Point {
@@ -152,5 +158,16 @@ mod test {
         f[Point { x: 1, y: 0 }] = true;
         f[Point { x: 1, y: 1 }] = true;
         assert_eq!(f.render()[0].1, '▟');
+    }
+    #[test]
+    fn test_compress() {
+        let mut f = empty_frame();
+        f[Point { x: 0, y: 0 }] = true;
+        f[Point { x: 2, y: 0 }] = true;
+        let frame = f.render();
+        assert_eq!(frame[0].0, Point { x: 0, y: 0 });
+        assert_eq!(frame[1].0, Point { x: 1, y: 0 });
+        assert_eq!(frame[2].0, Point { x: 2, y: 0 });
+        assert_eq!(frame[3].0, Point { x: 3, y: 0 });
     }
 }

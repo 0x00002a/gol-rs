@@ -12,7 +12,7 @@ pub struct Board {
     width: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Point {
     pub x: i64,
     pub y: i64,
@@ -44,6 +44,12 @@ impl Mask {
 
     pub fn dx(&self) -> u32 {
         self.w.abs_diff(self.x)
+    }
+    pub fn contains(&self, pt: &Point) -> bool {
+        pt.x >= self.x as i64
+            && pt.x <= self.right() as i64
+            && pt.y >= self.y as i64
+            && pt.y <= self.bottom() as i64
     }
 }
 

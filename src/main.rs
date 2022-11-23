@@ -226,7 +226,7 @@ fn main() -> Result<()> {
                         if viewport.h % 2 == 1 {
                             viewport.h -= 1;
                         }
-                        let frame = Frame::new(b.slice(&viewport)?);
+                        let frame = Frame::new(b, viewport);
                         win.color_set(0);
                         win.clear();
                         frame
