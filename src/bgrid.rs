@@ -37,6 +37,8 @@ impl Frame {
                         '▜'
                     } else if alive[0] && alive[2] && alive[3] {
                         '▙'
+                    } else if alive[1] && alive[2] && alive[3] {
+                        '▟'
                     } else if alive[0] && alive[1] {
                         '▀'
                     } else if alive[2] && alive[3] {
@@ -142,5 +144,13 @@ mod test {
                 assert_eq!(f.render()[0].1, ' ');
             }
         }
+    }
+    #[test]
+    fn test_bot_right() {
+        let mut f = empty_frame();
+        f[Point { x: 0, y: 1 }] = true;
+        f[Point { x: 1, y: 0 }] = true;
+        f[Point { x: 1, y: 1 }] = true;
+        assert_eq!(f.render()[0].1, '▟');
     }
 }
