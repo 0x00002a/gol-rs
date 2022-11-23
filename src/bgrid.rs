@@ -13,18 +13,20 @@ impl Frame {
     }
 
     pub fn render(&self) -> Vec<(Point, char)> {
-        (0..self.view.bottom())
+        let bounds = self.view.clone().scale(2);
+        (0..self.view.h)
             .flat_map(|y| {
-                (0..self.view.right()).map(move |x| {
+                let bounds = &bounds;
+                (0..self.view.w).map(move |x| {
                     let alive = (0..2)
                         .flat_map(|oy| {
                             (0..2).map(move |ox| Point {
-                                x: (x * 2 + ox) as i64,
-                                y: (y * 2 + oy) as i64,
+                                x: (x * 2 + ox + self.view.x) as i64,
+                                y: (y * 2 + oy + self.view.y) as i64,
                             })
                         })
                         .map(|p| {
-                            if !self.view.contains(&p) {
+                            if !bounds.contains(&p) {
                                 false
                             } else {
                                 self.pts[p]
@@ -66,7 +68,7 @@ impl Frame {
                     } else if alive[3] {
                         '▗'
                     } else {
-                        '░'
+                        ' '
                     };
                     (
                         Point {

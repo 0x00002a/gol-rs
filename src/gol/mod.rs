@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use rayon::iter::*;
 use std::{
     fmt::Display,
-    ops::{Deref, DerefMut, Index, IndexMut},
+    ops::{Deref, DerefMut, Index, IndexMut, Mul},
     slice::ChunksMut,
 };
 
@@ -23,7 +23,7 @@ impl Display for Point {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Mask {
     pub x: u32,
     pub y: u32,
@@ -50,6 +50,23 @@ impl Mask {
             && pt.x <= self.right() as i64
             && pt.y >= self.y as i64
             && pt.y <= self.bottom() as i64
+    }
+    pub fn scale(mut self, by: u32) -> Self {
+        self.w *= by;
+        self.h *= by;
+        self
+    }
+}
+impl Display for Mask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({} -> {}, {} -> {})",
+            self.x,
+            self.right(),
+            self.y,
+            self.bottom()
+        )
     }
 }
 

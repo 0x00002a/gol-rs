@@ -226,14 +226,28 @@ fn main() -> Result<()> {
                         if viewport.h % 2 == 1 {
                             viewport.h -= 1;
                         }
-                        let frame = Frame::new(b, viewport);
+                        let frame = Frame::new(b.clone(), viewport);
+                        let screen_view = Mask {
+                            x: win.get_beg_x() as u32,
+                            y: win.get_beg_y() as u32,
+                            w: win.get_max_x() as u32,
+                            h: win.get_max_y() as u32,
+                        };
                         win.color_set(0);
                         win.clear();
                         frame
                             .render()
                             .into_iter()
                             .map(|(pt, c)| {
-                                check(win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c)))
+                                if !screen_view.contains(&pt) {
+                                    Err(anyhow!(
+                                        "tried to draw outside the viewport: {} not in {}",
+                                        pt,
+                                        screen_view
+                                    ))
+                                } else {
+                                    check(win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c)))
+                                }
                             })
                             .collect::<Result<_>>()?;
                         win.color_set(3);
