@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::thread::{self, sleep};
 
 use anyhow::{anyhow, ensure, Result};
+use args::Args;
 use bgrid::Frame;
+use clap::Parser;
 use gol::{Mask, Point};
 use pancurses::{curs_set, endwin, init_pair, noecho, start_color, Input, COLOR_BLACK};
 use rayon::prelude::*;
@@ -16,6 +18,7 @@ use rayon::slice::ParallelSliceMut;
 use scopeguard::defer;
 use std::{io, time::Duration};
 
+mod args;
 mod bgrid;
 mod gol;
 
@@ -139,15 +142,15 @@ fn check(r: i32) -> Result<()> {
     }
 }
 fn main() -> Result<()> {
-    let args: Vec<_> = std::env::args().collect();
-    let threads = args.get(2).and_then(|m| m.parse().ok()).unwrap_or(4);
-    let mut infile = std::fs::File::open(args.get(1).expect("no input filename?"))
-        .expect("failed to open input file");
+    let args = Args::parse();
+    let threads = args.threads.unwrap_or_else(|| num_cpus::get() as u16);
+    let mut infile = std::fs::File::open(args.input)?;
     let initial = read_pgm(&mut infile)?;
     let mut turn = 0;
     let (sx, tx) = std::sync::mpsc::channel();
     let bsx = sx.clone();
     let running = AtomicBool::new(true);
+    let scroll_inc = 6;
     thread::scope(|s| -> Result<()> {
         let mut curr = initial.clone();
         let running = &running;
@@ -156,7 +159,7 @@ fn main() -> Result<()> {
                 .expect("failed to create threadpool")
                 .install(move || -> Result<()> {
                     while running.load(sync::atomic::Ordering::SeqCst) {
-                        curr = run_turn(curr, threads).expect("failed to run turn");
+                        curr = run_turn(curr, threads as u32).expect("failed to run turn");
                         let r = bsx.send(Event::TurnEnd(curr.clone()));
                         if r.is_err() {
                             break;
@@ -236,20 +239,19 @@ fn main() -> Result<()> {
                         win.color_set(3);
                         win.mvaddstr(0, 0, format!("turn  {}", turn));
                         win.mvaddstr(1, 0, format!("alive {}", b.alive()));
-                        win.mvaddstr(2, 0, format!("mw {} mh {}", viewport.w, viewport.h));
                         win.refresh();
                     }
                     Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
-                        offset.x -= 1
+                        offset.x -= scroll_inc
                     }
                     Event::KeyPress(Input::KeyRight) | Event::KeyPress(Input::Character('l')) => {
-                        offset.x += 1
+                        offset.x += scroll_inc
                     }
                     Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
-                        offset.y -= 1
+                        offset.y -= scroll_inc
                     }
                     Event::KeyPress(Input::KeyDown) | Event::KeyPress(Input::Character('j')) => {
-                        offset.y += 1
+                        offset.y += scroll_inc
                     }
                     Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
                         running.store(false, sync::atomic::Ordering::SeqCst);
