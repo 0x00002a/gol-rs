@@ -1,32 +1,18 @@
+use std::cell::Cell;
 use std::io::{BufReader, Read, Write};
+use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, sleep};
 
 use anyhow::{anyhow, ensure, Result};
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
 use gol::{Mask, Point};
+use pancurses::{endwin, init_pair, start_color, Input, COLOR_BLACK};
 use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 use std::{io, time::Duration};
-use tui::layout::Rect;
-use tui::style::{Color, Style};
-use tui::text::{Span, Spans, Text};
-use tui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Widget},
-    Terminal,
-};
-
-use crate::render::Renderer;
 
 mod gol;
-mod render;
 
 type Board = gol::Board;
 
@@ -108,17 +94,51 @@ fn write_pgm(b: &Board, f: &mut dyn Write) -> Result<()> {
 }
 enum Event {
     TurnEnd(Board),
-    KeyPress(char),
+    KeyPress(Input),
 }
 
-fn main() {
+struct SessionWin {
+    win: pancurses::Window,
+}
+impl Deref for SessionWin {
+    type Target = pancurses::Window;
+
+    fn deref(&self) -> &Self::Target {
+        return &self.win;
+    }
+}
+impl Drop for SessionWin {
+    fn drop(&mut self) {
+        endwin();
+    }
+}
+impl SessionWin {
+    fn initscr() -> Self {
+        let win = pancurses::initscr();
+        start_color();
+        Self { win }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct Colour {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+enum CellColours {
+    Dead = 0,
+    Alive = 1,
+}
+
+fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     let threads = args.get(2).and_then(|m| m.parse().ok()).unwrap_or(4);
     let mut infile = std::fs::File::open(args.get(1).expect("no input filename?"))
         .expect("failed to open input file");
-    let initial = read_pgm(&mut infile).expect("failed to read pgm input");
+    let initial = read_pgm(&mut infile)?;
     let mut turn = 0;
-    println!("running");
     let (sx, tx) = std::sync::mpsc::channel();
     let bsx = sx.clone();
     thread::scope(move |s| {
@@ -132,35 +152,52 @@ fn main() {
                         curr = run_turn(curr, threads).expect("failed to run turn");
                         //turn += 1;
                         //println!("ran turn {} alive {}", turn, curr.alive());
-                        bsx.send(Event::TurnEnd(curr.clone()))?;
+                        let r = bsx.send(Event::TurnEnd(curr.clone()));
+                        if r.is_err() {
+                            break;
+                        }
                     }
                     Ok(())
                 })?;
             Ok(())
         });
+
+        let win = SessionWin::initscr();
+        win.clear();
+        win.refresh();
         let ksx = sx.clone();
         s.spawn(move || {
-            let mut stdin = std::io::stdin();
-            let mut buf: [u8; 1] = [0];
-            let _ = stdin.lock();
+            let w = pancurses::newwin(0, 0, 0, 0);
+            w.nodelay(true);
+            w.keypad(true);
             while running {
-                stdin.read_exact(&mut buf).unwrap();
-                ksx.send(Event::KeyPress(buf[0] as char)).unwrap();
+                match w.getch() {
+                    None => {
+                        sleep(Duration::from_millis(1));
+                        continue;
+                    }
+                    Some(c) => {
+                        let r = ksx.send(Event::KeyPress(c));
+                        if r.is_err() {
+                            break;
+                        }
+                    }
+                }
             }
         });
-        //let mut turn = 0;
-        //loop {
-        //let b = tx.recv().unwrap();
-        //turn += 1;
-        ////let mut out = std::fs::File::create("out.pgm").unwrap();
-        //println!("turn: {}, alive: {}", turn, b.alive());
-        ////write_pgm(&b, &mut out).unwrap();
-        //}
-        enable_raw_mode().expect("failed to enable raw mode");
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).unwrap();
+        start_color();
+        init_pair(
+            CellColours::Dead as i16,
+            pancurses::COLOR_BLACK,
+            pancurses::COLOR_BLACK,
+        );
+        init_pair(
+            CellColours::Alive as i16,
+            pancurses::COLOR_WHITE,
+            pancurses::COLOR_WHITE,
+        );
+        init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
+
         let mut offset = Point { x: 0, y: 0 };
         while running {
             let ev = tx.recv().unwrap();
@@ -168,55 +205,47 @@ fn main() {
                 Event::TurnEnd(b) => {
                     turn += 1;
                     offset.remap(b.width(), b.height());
-                    terminal
-                        .draw(|f| {
-                            let tsize = f.size();
-                            for py in 0..tsize.bottom() {
-                                for px in 0..tsize.right() {
-                                    let pt = Point {
-                                        x: px as i64 + offset.x,
-                                        y: py as i64 + offset.y,
-                                    };
-                                    let v = b[pt.clone()];
+                    win.color_set(CellColours::Dead as i16);
+                    for py in 0..win.get_max_y() {
+                        for px in 0..win.get_max_x() {
+                            let pt = Point {
+                                x: px as i64 + offset.x,
+                                y: py as i64 + offset.y,
+                            };
+                            let v = b[pt.clone()];
 
-                                    let c = if v { Color::White } else { Color::Black };
-                                    let block = Block::default().style(Style::default().bg(c));
-                                    let mut rpt = Rect::default();
-                                    rpt.x = px;
-                                    rpt.y = py;
-                                    rpt.width = 1;
-                                    rpt.height = 1;
-                                    f.render_widget(block, rpt);
-                                }
-                            }
-                            let turn_count = Block::default().title(format!("turn {}", turn));
-                            let mut turn_r = Rect::default();
-                            f.render_widget(turn_count, turn_r);
-                        })
-                        .expect("failed to render frame");
+                            let c = if v {
+                                CellColours::Alive
+                            } else {
+                                CellColours::Dead
+                            };
+                            win.color_set(c as i16);
+                            win.mvaddch(py, px, ' ');
+                        }
+                    }
+                    win.color_set(3);
+                    win.mvaddstr(0, 0, format!("turn {}", turn));
+                    win.refresh();
                 }
-                Event::KeyPress('q') => running = false,
-                Event::KeyPress('l') => offset.x += 1,
-                Event::KeyPress('h') => offset.x -= 1,
-                Event::KeyPress('k') => offset.y -= 1,
-                Event::KeyPress('j') => offset.y += 1,
+                Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
+                    offset.x -= 1
+                }
+                Event::KeyPress(Input::KeyRight) | Event::KeyPress(Input::Character('l')) => {
+                    offset.x += 1
+                }
+                Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
+                    offset.y -= 1
+                }
+                Event::KeyPress(Input::KeyDown) | Event::KeyPress(Input::Character('j')) => {
+                    offset.y += 1
+                }
+                Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
+                    running = false
+                }
                 _ => (),
             }
         }
-        disable_raw_mode().unwrap();
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )
-        .unwrap();
-        terminal.show_cursor().unwrap();
-
-        /*while r.tick() {
-            /*let b = tx.try_recv();
-            if b.is_ok() {
-                r = r.render_board(&b.unwrap());
-            }*/
-        }*/
     });
+    endwin();
+    Ok(())
 }
