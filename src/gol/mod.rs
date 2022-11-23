@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use rayon::iter::*;
 use std::{
     fmt::Display,
@@ -30,6 +30,15 @@ pub struct Mask {
     pub w: u32,
     pub h: u32,
 }
+impl Mask {
+    fn right(&self) -> u32 {
+        self.x + self.w
+    }
+
+    fn bottom(&self) -> u32 {
+        self.y + self.h
+    }
+}
 
 impl Board {
     pub fn new(width: u32, buf: Vec<bool>) -> Self {
@@ -39,6 +48,36 @@ impl Board {
         pt.remap(self.width(), self.height());
         return ((pt.y * self.width as i64) + pt.x) as usize;
     }
+    pub fn slice(&self, sect: &Mask) -> Result<Self> {
+        [(sect.right(), self.width()), (sect.bottom(), self.height())]
+            .into_iter()
+            .map(|(l, r)| {
+                if l > r {
+                    Err(anyhow!("section out of bounds {} > {}", l, r))
+                } else {
+                    Ok(())
+                }
+            })
+            .collect::<Result<_>>()?;
+
+        let mut out = Vec::new();
+        out.reserve((sect.w * sect.h) as usize);
+        for y in sect.y..sect.bottom() {
+            for x in sect.x..sect.right() {
+                out.push(
+                    self[Point {
+                        x: x as i64,
+                        y: y as i64,
+                    }],
+                );
+            }
+        }
+        Ok(Self {
+            buf: out,
+            width: sect.w,
+        })
+    }
+
     pub fn width(&self) -> u32 {
         return self.width;
     }
@@ -147,5 +186,27 @@ impl Point {
         if self.y >= h as i64 {
             self.y -= h as i64;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_slice_board() -> Result<()> {
+        let init = Board::new(4, (0..16).map(|_| false).collect());
+        let mut whole = init.clone();
+        whole[Point { x: 1, y: 1 }] = true;
+        let sliced = whole.slice(&Mask {
+            x: 1,
+            y: 1,
+            w: 2,
+            h: 2,
+        })?;
+        assert_eq!(sliced[Point { x: 0, y: 0 }], true);
+        assert_eq!(sliced.width(), 2);
+        assert_eq!(sliced.height(), 2);
+        Ok(())
     }
 }
