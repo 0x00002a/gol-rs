@@ -150,7 +150,7 @@ fn main() -> Result<()> {
     let (sx, tx) = std::sync::mpsc::channel();
     let bsx = sx.clone();
     let running = AtomicBool::new(true);
-    let scroll_inc = 6;
+    let scroll_inc = (initial.width() / 100) as i64;
     thread::scope(|s| -> Result<()> {
         let mut curr = initial.clone();
         let running = &running;
