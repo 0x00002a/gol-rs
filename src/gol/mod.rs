@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rayon::iter::*;
 use std::{
+    fmt::Display,
     ops::{Deref, DerefMut, Index, IndexMut},
     slice::ChunksMut,
 };
@@ -15,6 +16,11 @@ pub struct Board {
 pub struct Point {
     pub x: i64,
     pub y: i64,
+}
+impl Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
 }
 
 #[derive(Clone)]

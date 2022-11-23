@@ -14,6 +14,7 @@ use rayon::prelude::*;
 use rayon::slice::ParallelSliceMut;
 use std::{io, time::Duration};
 
+mod bgrid;
 mod gol;
 
 type Board = gol::Board;
