@@ -59,12 +59,14 @@ where
     assert_eq!(v.len() as u32, w * h);
     let mut out = Vec::new();
     out.reserve(v.len());
-    for y in 0..h {
-        for x in 0..w {
-            let val = v[(x * w + y) as usize].clone();
+
+    for x in 0..w {
+        for y in 0..h {
+            let val = v[(y * w + x) as usize].clone();
             out.push(val);
         }
     }
+
     out
 }
 
@@ -90,12 +92,7 @@ impl Charset for BrailleChset {
             bg
         } else {
             let ch = char::from_u32(0x2800 as u32 + off).unwrap();
-            println!(
-                "off: {} -> {} (a: {})",
-                off,
-                ch,
-                alive.iter().filter(|a| **a).count()
-            );
+            println!("off: {} -> {} (a: {:?})", off, ch, alive);
             ch
         }
     }
@@ -288,5 +285,11 @@ mod test {
         assert_eq!(render(&f), '⠁');
         f[Point { x: 0, y: 1 }] = true;
         assert_eq!(render(&f), '⠃');
+    }
+    #[test]
+    fn tranpose_swaps_w_and_h() {
+        let initial = vec![0, 0, 1, 1, 2, 2];
+        let transed = transpose(&initial, 2, 3);
+        assert_eq!(transed, vec![0, 1, 2, 0, 1, 2]);
     }
 }
