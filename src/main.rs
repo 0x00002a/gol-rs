@@ -130,6 +130,8 @@ fn run_event_loop(
     scroll_inc: i64,
 ) -> Result<()> {
     let win = SessionWin::initscr();
+    win.keypad(true);
+    win.nodelay(true);
     win.clear();
     win.refresh();
     curs_set(0);
@@ -143,7 +145,17 @@ fn run_event_loop(
     let mut offset = Point { x: 0, y: 0 };
     let mut turn = 0;
     while running.load(sync::atomic::Ordering::SeqCst) {
-        let ev = tx.recv().unwrap();
+        let mut ev = Option::None;
+        while let None = ev {
+            ev = win
+                .getch()
+                .map(|c| Event::KeyPress(c))
+                .or_else(|| tx.try_recv().ok());
+            if ev.is_none() {
+                sleep(Duration::from_millis(1));
+            }
+        }
+        let ev = ev.unwrap();
         match ev {
             Event::TurnEnd(b) => {
                 turn += 1;
@@ -237,13 +249,14 @@ fn main() -> Result<()> {
         let (sx, tx) = std::sync::mpsc::channel();
         let bsx = sx.clone();
         let running = AtomicBool::new(true);
-        thread::scope(|s| -> Result<()> {
-            let mut curr = initial.clone();
-            let running = &running;
-            s.spawn(move || -> Result<()> {
+
+        let mut curr = initial.clone();
+        let running = &running;
+        std::thread::scope(move |s| {
+            s.spawn(move || {
                 mk_pool(threads as usize)
                     .expect("failed to create threadpool")
-                    .install(move || -> Result<()> {
+                    .install(move || {
                         while running.load(sync::atomic::Ordering::SeqCst) {
                             curr = run_turn(curr, threads as u32).expect("failed to run turn");
                             let r = bsx.send(Event::TurnEnd(curr.clone()));
@@ -251,30 +264,7 @@ fn main() -> Result<()> {
                                 break;
                             }
                         }
-                        Ok(())
-                    })?;
-                Ok(())
-            });
-
-            let ksx = sx.clone();
-            s.spawn(move || {
-                let w = pancurses::newwin(0, 0, 0, 0);
-                w.nodelay(true);
-                w.keypad(true);
-                while running.load(sync::atomic::Ordering::SeqCst) {
-                    match w.getch() {
-                        None => {
-                            sleep(Duration::from_millis(1));
-                            continue;
-                        }
-                        Some(c) => {
-                            let r = ksx.send(Event::KeyPress(c));
-                            if r.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
+                    })
             });
 
             let scroll_inc = (initial.width() / 100) as i64;
