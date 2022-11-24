@@ -128,19 +128,24 @@ impl Frame {
     }
 
     pub fn render(&self, background: char, charset: Charset) -> Rendered {
-        let mut bounds = self.view.clone();
         let (scalex, scaley) = charset.scale();
-        bounds.w *= scalex;
-        bounds.y *= scaley;
-        let bounds = bounds;
         let maxh = self.view.h.min(self.pts.height() / scaley);
         let maxw = self.view.w.min(self.pts.width() / scalex);
         let offset = Point {
             x: (self.view.w.abs_diff(maxw) / 2) as i64,
             y: (self.view.h.abs_diff(maxh) / 2) as i64,
         };
+
+        let bounds = Mask {
+            x: offset.x as u32 + self.view.x,
+            y: offset.y as u32 + self.view.y,
+            w: offset.x as u32 + maxw * scalex,
+            h: offset.y as u32 + maxh * scaley,
+        };
+
         let maxh = maxh + offset.y as u32;
         let maxw = maxw + offset.x as u32;
+
         let mut frame: Rendered = (offset.y as u32..maxh)
             .flat_map(|y| {
                 let bounds = &bounds;
@@ -222,8 +227,8 @@ mod test {
             Mask {
                 x: 0,
                 y: 0,
-                w: 4,
-                h: 4,
+                w: 2,
+                h: 2,
             },
         )
     }
@@ -301,7 +306,7 @@ mod test {
                 h: 10,
             },
         );
-        assert_eq!(f.render_box().len(), 8);
+        assert_eq!(f.render_box().len(), 12);
     }
 
     #[test]
