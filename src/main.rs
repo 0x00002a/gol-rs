@@ -1,5 +1,7 @@
+use std::any::Any;
 use std::io::{BufReader, Read};
 use std::ops::Deref;
+use std::panic::PanicInfo;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
@@ -232,45 +234,60 @@ fn run_event_loop(
     }
     Ok(())
 }
+fn run_game() -> Result<()> {
+    let args = Args::parse();
+    let threads = args.threads.unwrap_or_else(|| (num_cpus::get() - 2) as u16);
+    let mut infile = std::fs::File::open(args.input)?;
+    let initial = read_pgm(&mut infile)?;
+    let (sx, tx) = std::sync::mpsc::channel();
+    let bsx = sx.clone();
+    let running = AtomicBool::new(true);
+
+    let mut curr = initial.clone();
+    let running = &running;
+    std::thread::scope(move |s| {
+        s.spawn(move || {
+            mk_pool(threads as usize)
+                .expect("failed to create threadpool")
+                .install(move || {
+                    while running.load(sync::atomic::Ordering::SeqCst) {
+                        curr = run_turn(curr, threads as u32).expect("failed to run turn");
+                        let r = bsx.send(Event::TurnEnd(curr.clone()));
+                        if r.is_err() {
+                            break;
+                        }
+                    }
+                })
+        });
+
+        let scroll_inc = (initial.width() / 100) as i64;
+        run_event_loop(&running, tx, args.background, scroll_inc)
+    })
+}
+fn with_handler<H, F, R>(handler: H, func: F) -> Result<R, Box<dyn Any + Send>>
+where
+    F: FnOnce() -> R + std::panic::UnwindSafe,
+    H: Fn(&PanicInfo) -> () + 'static + Sync + Send,
+{
+    let old = panic::take_hook();
+    panic::set_hook(Box::new(handler));
+    let r = panic::catch_unwind(func);
+    panic::set_hook(old);
+    r
+}
+
 fn main() -> Result<()> {
     let panic_buf = Arc::new(Mutex::new(String::new()));
-    panic::set_hook({
-        let panic_buf = panic_buf.clone();
-        Box::new(move |info| {
-            let mut panic_buf = panic_buf.lock().unwrap();
-            panic_buf.push_str(&info.to_string());
-        })
-    });
-    let rs = panic::catch_unwind(|| {
-        let args = Args::parse();
-        let threads = args.threads.unwrap_or_else(|| (num_cpus::get() - 2) as u16);
-        let mut infile = std::fs::File::open(args.input)?;
-        let initial = read_pgm(&mut infile)?;
-        let (sx, tx) = std::sync::mpsc::channel();
-        let bsx = sx.clone();
-        let running = AtomicBool::new(true);
-
-        let mut curr = initial.clone();
-        let running = &running;
-        std::thread::scope(move |s| {
-            s.spawn(move || {
-                mk_pool(threads as usize)
-                    .expect("failed to create threadpool")
-                    .install(move || {
-                        while running.load(sync::atomic::Ordering::SeqCst) {
-                            curr = run_turn(curr, threads as u32).expect("failed to run turn");
-                            let r = bsx.send(Event::TurnEnd(curr.clone()));
-                            if r.is_err() {
-                                break;
-                            }
-                        }
-                    })
-            });
-
-            let scroll_inc = (initial.width() / 100) as i64;
-            run_event_loop(&running, tx, args.background, scroll_inc)
-        })
-    });
+    let rs = with_handler(
+        {
+            let panic_buf = panic_buf.clone();
+            move |info| {
+                let mut panic_buf = panic_buf.lock().unwrap();
+                panic_buf.push_str(&info.to_string());
+            }
+        },
+        run_game,
+    );
     match rs {
         Err(_) => println!("{}", panic_buf.lock().unwrap()),
         Ok(r) => r?,
