@@ -14,10 +14,12 @@ impl Frame {
 
     pub fn render(&self, background: char) -> Vec<(Point, char)> {
         let bounds = self.view.clone().scale(2);
-        (0..self.view.h)
+        let maxh = self.view.h.min(self.pts.width());
+        let maxw = self.view.w.min(self.pts.width());
+        (0..maxh)
             .flat_map(|y| {
                 let bounds = &bounds;
-                (0..self.view.w).map(move |x| {
+                (0..maxw).map(move |x| {
                     let alive = (0..2)
                         .flat_map(|oy| {
                             (0..2).map(move |ox| Point {
@@ -187,5 +189,18 @@ mod test {
         assert_eq!(frame[1].0, Point { x: 1, y: 0 });
         assert_eq!(frame[2].0, Point { x: 2, y: 0 });
         assert_eq!(frame[3].0, Point { x: 3, y: 0 });
+    }
+    #[test]
+    fn test_smaller_frame_than_mask() {
+        let f = Frame::new(
+            Board::new(4, EMPTY.into()),
+            Mask {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 10,
+            },
+        );
+        assert_eq!(f.render(' ').len(), 16);
     }
 }
