@@ -36,13 +36,6 @@ impl Mask {
     pub fn bottom(&self) -> u32 {
         self.y + self.h
     }
-    pub fn dy(&self) -> u32 {
-        self.h.abs_diff(self.y)
-    }
-
-    pub fn dx(&self) -> u32 {
-        self.w.abs_diff(self.x)
-    }
     pub fn contains(&self, pt: &Point) -> bool {
         pt.x >= self.x as i64
             && pt.x <= self.right() as i64

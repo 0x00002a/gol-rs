@@ -162,18 +162,12 @@ fn run_event_loop(
             Event::TurnEnd(b) => {
                 turn += 1;
                 offset.remap(b.width(), b.height());
-                let mut viewport = Mask {
+                let viewport = Mask {
                     x: (offset.x) as u32,
                     y: (offset.y) as u32,
                     w: (win.get_max_x()) as u32,
                     h: (win.get_max_y()) as u32,
                 };
-                if viewport.dx() % 2 == 1 {
-                    viewport.w -= 1;
-                }
-                if viewport.dy() % 2 == 1 {
-                    viewport.h -= 1;
-                }
                 let frame = Frame::new(b.clone(), viewport);
                 let screen_view = Mask {
                     x: win.get_beg_x() as u32,
