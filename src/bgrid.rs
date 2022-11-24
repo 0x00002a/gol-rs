@@ -135,11 +135,17 @@ impl Frame {
         let bounds = bounds;
         let maxh = self.view.h.min(self.pts.height() / scaley);
         let maxw = self.view.w.min(self.pts.width() / scalex);
-        (0..maxh)
+        let offset = Point {
+            x: (self.view.w.abs_diff(maxw) / 2) as i64,
+            y: (self.view.h.abs_diff(maxh) / 2) as i64,
+        };
+        let maxh = maxh + offset.y as u32;
+        let maxw = maxw + offset.x as u32;
+        let mut frame: Rendered = (offset.y as u32..maxh)
             .flat_map(|y| {
                 let bounds = &bounds;
                 let charset = &charset;
-                (0..maxw).map(move |x| {
+                (offset.x as u32..maxw).map(move |x| {
                     let alive = (0..scaley)
                         .flat_map(|oy| {
                             (0..scalex).map(move |ox| Point {
@@ -165,7 +171,26 @@ impl Frame {
                     )
                 })
             })
-            .collect()
+            .collect();
+        if maxw < self.view.w {
+            frame
+                .extend((offset.y as u32 + 1..maxh).flat_map(|y| {
+                    [offset.x, maxw as i64].map(|x| (Point { x, y: y as i64 }, '│'))
+                }));
+        }
+        if maxh < self.view.h {
+            frame
+                .extend((offset.x as u32 + 1..maxw).flat_map(|x| {
+                    [offset.y, maxh as i64].map(|y| (Point { x: x as i64, y }, '─'))
+                }));
+        }
+        if maxh < self.view.h && maxw < self.view.w {
+            frame.push(((offset.x, offset.y).into(), '┌'));
+            frame.push(((offset.x, maxh).into(), '└'));
+            frame.push(((maxw, offset.y).into(), '┐'));
+            frame.push(((maxw, maxh).into(), '┘'));
+        }
+        frame
     }
 }
 
@@ -276,7 +301,7 @@ mod test {
                 h: 10,
             },
         );
-        assert_eq!(f.render_box().len(), 4);
+        assert_eq!(f.render_box().len(), 8);
     }
 
     #[test]

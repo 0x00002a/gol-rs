@@ -144,7 +144,8 @@ fn run_event_loop(
     init_pair(0, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
     init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
 
-    let scroll_inc: i64 = (win.get_max_x().max(win.get_max_y()) / 10).into();
+    let scroll_inc: i64 =
+        (win.get_max_x().max(win.get_max_y()) / 20 / chset.scale().1 as i32).into();
     let mut offset = Point { x: 0, y: 0 };
     let mut turn = 0;
     while running.load(sync::atomic::Ordering::SeqCst) {
@@ -205,8 +206,9 @@ fn run_event_loop(
                     })
                     .collect::<Result<_>>()?;
                 win.color_set(3);
-                win.mvaddstr(0, 0, format!("turn  {}", turn));
-                win.mvaddstr(1, 0, format!("alive {}", b.alive()));
+                win.mvaddstr(0, 0, format!("turn   {}", turn));
+                win.mvaddstr(1, 0, format!("alive  {}", b.alive()));
+                win.mvaddstr(2, 0, format!("offset {}", offset));
                 win.refresh();
             }
             Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {

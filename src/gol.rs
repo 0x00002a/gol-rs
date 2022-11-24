@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::{
     fmt::Display,
-    ops::{Index, IndexMut},
+    ops::{Add, Index, IndexMut},
 };
 
 #[derive(Clone, Debug)]
@@ -18,6 +18,27 @@ pub struct Point {
 impl Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.x, self.y)
+    }
+}
+impl Add for Point {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self.x += rhs.x;
+        self.y += rhs.y;
+        self
+    }
+}
+impl<I1, I2> From<(I1, I2)> for Point
+where
+    I1: Into<i64>,
+    I2: Into<i64>,
+{
+    fn from((l, r): (I1, I2)) -> Self {
+        Self {
+            x: l.into(),
+            y: r.into(),
+        }
     }
 }
 
