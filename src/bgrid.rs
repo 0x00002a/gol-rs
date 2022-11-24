@@ -11,7 +11,10 @@ pub struct Frame {
 pub enum Charset {
     Braille,
     Block,
+    None,
+    Ascii,
 }
+
 impl Charset {
     fn calc_braille_offset(self, alive: &Vec<bool>) -> u8 {
         let (w, h) = self.scale();
@@ -27,6 +30,8 @@ impl Charset {
         match self {
             Charset::Braille => (2, 4),
             Charset::Block => (2, 2),
+            Charset::None => (1, 1),
+            Charset::Ascii => (1, 1),
         }
     }
     pub fn encode(self, bg: char, alive: &Vec<bool>) -> char {
@@ -71,6 +76,20 @@ impl Charset {
                     '▖'
                 } else if alive[3] {
                     '▗'
+                } else {
+                    bg
+                }
+            }
+            Charset::None => {
+                if alive[0] {
+                    ' '
+                } else {
+                    bg
+                }
+            }
+            Charset::Ascii => {
+                if alive[0] {
+                    'A'
                 } else {
                     bg
                 }

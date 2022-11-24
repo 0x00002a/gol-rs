@@ -24,13 +24,20 @@ pub struct Args {
 
 impl ValueEnum for Charset {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Charset::Block, Charset::Braille]
+        &[
+            Charset::Block,
+            Charset::Braille,
+            Charset::None,
+            Charset::Ascii,
+        ]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         Some(match self {
             Charset::Braille => PossibleValue::new("braille"),
             Charset::Block => PossibleValue::new("block"),
+            Charset::None => PossibleValue::new("none"),
+            Charset::Ascii => PossibleValue::new("ascii"),
         })
     }
 }
