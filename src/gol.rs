@@ -42,11 +42,6 @@ impl Mask {
             && pt.y >= self.y as i64
             && pt.y <= self.bottom() as i64
     }
-    pub fn scale(mut self, by: u32) -> Self {
-        self.w *= by;
-        self.h *= by;
-        self
-    }
 }
 impl Display for Mask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

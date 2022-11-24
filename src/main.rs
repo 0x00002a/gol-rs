@@ -10,7 +10,7 @@ use std::{panic, sync};
 
 use anyhow::{anyhow, ensure, Result};
 use args::Args;
-use bgrid::Frame;
+use bgrid::{Charset, Frame};
 use clap::Parser;
 use gol::{Mask, Point};
 use pancurses::{curs_set, endwin, init_pair, noecho, start_color, Input};
@@ -19,12 +19,9 @@ use rayon::slice::ParallelSliceMut;
 use scopeguard::defer;
 use std::time::Duration;
 
-use crate::bgrid::BoxChset;
-
 mod args;
 mod bgrid;
 mod gol;
-mod iter_util;
 
 type Board = gol::Board;
 
@@ -128,7 +125,12 @@ fn check(r: i32) -> Result<()> {
         Ok(())
     }
 }
-fn run_event_loop(running: &AtomicBool, tx: Receiver<Event>, bg: char) -> Result<()> {
+fn run_event_loop(
+    running: &AtomicBool,
+    tx: Receiver<Event>,
+    bg: char,
+    chset: Charset,
+) -> Result<()> {
     let win = SessionWin::initscr();
     win.keypad(true);
     win.nodelay(true);
@@ -177,7 +179,7 @@ fn run_event_loop(running: &AtomicBool, tx: Receiver<Event>, bg: char) -> Result
                 win.color_set(0);
                 win.clear();
                 frame
-                    .render(bg, BoxChset {})
+                    .render(bg, chset)
                     .into_iter()
                     .map(|(pt, c)| {
                         if !screen_view.contains(&pt) {
@@ -253,7 +255,7 @@ fn run_game() -> Result<()> {
                 })
         });
 
-        run_event_loop(&running, tx, args.background)
+        run_event_loop(&running, tx, args.background, args.charset)
     })
 }
 fn with_handler<H, F, R>(handler: H, func: F) -> Result<R, Box<dyn Any + Send>>
