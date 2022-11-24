@@ -5,7 +5,7 @@ use std::panic::PanicInfo;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, sleep};
+use std::thread::sleep;
 use std::{panic, sync};
 
 use anyhow::{anyhow, ensure, Result};
@@ -125,12 +125,7 @@ fn check(r: i32) -> Result<()> {
         Ok(())
     }
 }
-fn run_event_loop(
-    running: &AtomicBool,
-    tx: Receiver<Event>,
-    bg: char,
-    scroll_inc: i64,
-) -> Result<()> {
+fn run_event_loop(running: &AtomicBool, tx: Receiver<Event>, bg: char) -> Result<()> {
     let win = SessionWin::initscr();
     win.keypad(true);
     win.nodelay(true);
@@ -144,6 +139,7 @@ fn run_event_loop(
     init_pair(0, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
     init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
 
+    let scroll_inc: i64 = (win.get_max_x().max(win.get_max_y()) / 10).into();
     let mut offset = Point { x: 0, y: 0 };
     let mut turn = 0;
     while running.load(sync::atomic::Ordering::SeqCst) {
@@ -254,8 +250,7 @@ fn run_game() -> Result<()> {
                 })
         });
 
-        let scroll_inc = (initial.width() / 100) as i64;
-        run_event_loop(&running, tx, args.background, scroll_inc)
+        run_event_loop(&running, tx, args.background)
     })
 }
 fn with_handler<H, F, R>(handler: H, func: F) -> Result<R, Box<dyn Any + Send>>
