@@ -19,6 +19,8 @@ use rayon::slice::ParallelSliceMut;
 use scopeguard::defer;
 use std::time::Duration;
 
+use crate::bgrid::BoxChset;
+
 mod args;
 mod bgrid;
 mod gol;
@@ -174,7 +176,7 @@ fn run_event_loop(running: &AtomicBool, tx: Receiver<Event>, bg: char) -> Result
                 win.color_set(0);
                 win.clear();
                 frame
-                    .render(bg)
+                    .render(bg, BoxChset {})
                     .into_iter()
                     .map(|(pt, c)| {
                         if !screen_view.contains(&pt) {

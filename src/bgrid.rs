@@ -6,23 +6,78 @@ pub struct Frame {
     pts: Board,
     view: Mask,
 }
+pub trait Charset {
+    const SCALE: usize;
+    fn encode(&self, background: char, pts: &Vec<bool>) -> char;
+}
+
+pub struct BoxChset {}
+impl Charset for BoxChset {
+    const SCALE: usize = 2;
+
+    fn encode(&self, bg: char, alive: &Vec<bool>) -> char {
+        assert_eq!(alive.len(), Self::SCALE * 2);
+        if alive.iter().all(|a| *a) {
+            '█'
+        } else if alive[0] && alive[1] && alive[2] {
+            '▛'
+        } else if alive[0] && alive[1] && alive[3] {
+            '▜'
+        } else if alive[0] && alive[2] && alive[3] {
+            '▙'
+        } else if alive[1] && alive[2] && alive[3] {
+            '▟'
+        } else if alive[0] && alive[1] {
+            '▀'
+        } else if alive[2] && alive[3] {
+            '▄'
+        } else if alive[1] && alive[3] {
+            '▐'
+        } else if alive[0] && alive[2] {
+            '▌'
+        } else if alive[0] && alive[3] {
+            '▚'
+        } else if alive[1] && alive[2] {
+            '▞'
+        } else if alive[0] {
+            '▘'
+        } else if alive[1] {
+            '▝'
+        } else if alive[2] {
+            '▖'
+        } else if alive[3] {
+            '▗'
+        } else {
+            bg
+        }
+    }
+}
+type Rendered = Vec<(Point, char)>;
 
 impl Frame {
     pub fn new(pts: Board, view: Mask) -> Self {
         Self { pts, view }
     }
+    #[allow(dead_code)]
+    pub fn render_box(&self) -> Rendered {
+        self.render(' ', BoxChset {})
+    }
 
-    pub fn render(&self, background: char) -> Vec<(Point, char)> {
-        let bounds = self.view.clone().scale(2);
+    pub fn render<C>(&self, background: char, charset: C) -> Rendered
+    where
+        C: Charset,
+    {
+        let bounds = self.view.clone().scale(C::SCALE as u32);
         let maxh = self.view.h.min(self.pts.width());
         let maxw = self.view.w.min(self.pts.width());
         (0..maxh)
             .flat_map(|y| {
                 let bounds = &bounds;
+                let charset = &charset;
                 (0..maxw).map(move |x| {
-                    let alive = (0..2)
+                    let alive = (0..C::SCALE as u32)
                         .flat_map(|oy| {
-                            (0..2).map(move |ox| Point {
+                            (0..C::SCALE as u32).map(move |ox| Point {
                                 x: (x * 2 + ox + self.view.x) as i64,
                                 y: (y * 2 + oy + self.view.y) as i64,
                             })
@@ -35,43 +90,7 @@ impl Frame {
                             }
                         })
                         .collect::<Vec<_>>();
-                    // 0: top left
-                    // 1: top right
-                    // 2: bot left
-                    // 3: bot right
-                    let ch = if alive.iter().all(|a| *a) {
-                        '█'
-                    } else if alive[0] && alive[1] && alive[2] {
-                        '▛'
-                    } else if alive[0] && alive[1] && alive[3] {
-                        '▜'
-                    } else if alive[0] && alive[2] && alive[3] {
-                        '▙'
-                    } else if alive[1] && alive[2] && alive[3] {
-                        '▟'
-                    } else if alive[0] && alive[1] {
-                        '▀'
-                    } else if alive[2] && alive[3] {
-                        '▄'
-                    } else if alive[1] && alive[3] {
-                        '▐'
-                    } else if alive[0] && alive[2] {
-                        '▌'
-                    } else if alive[0] && alive[3] {
-                        '▚'
-                    } else if alive[1] && alive[2] {
-                        '▞'
-                    } else if alive[0] {
-                        '▘'
-                    } else if alive[1] {
-                        '▝'
-                    } else if alive[2] {
-                        '▖'
-                    } else if alive[3] {
-                        '▗'
-                    } else {
-                        background
-                    };
+                    let ch = charset.encode(background, &alive);
                     (
                         Point {
                             x: x as i64,
@@ -101,14 +120,6 @@ impl DerefMut for Frame {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    trait FrameExt {
-        fn render_f0(&self) -> char;
-    }
-    impl FrameExt for Frame {
-        fn render_f0(&self) -> char {
-            self.render(' ')[0].1
-        }
-    }
 
     use super::*;
     const EMPTY: [bool; 16] = [
@@ -130,18 +141,18 @@ mod test {
     fn test_individual() {
         let mut f = empty_frame();
         f[Point { x: 0, y: 0 }] = true;
-        assert_eq!(f.render(' ').len(), 16);
-        assert_eq!(f.render_f0(), '▘');
+        assert_eq!(f.render_box().len(), 16);
+        assert_eq!(f.render_box()[0].1, '▘');
 
         f[Point { x: 1, y: 1 }] = true;
-        assert_eq!(f.render_f0(), '▚');
+        assert_eq!(f.render_box()[0].1, '▚');
 
         f[Point { x: 1, y: 0 }] = true;
-        assert_eq!(f.render_f0(), '▜');
+        assert_eq!(f.render_box()[0].1, '▜');
         f[Point { x: 1, y: 0 }] = false;
 
         f[Point { x: 0, y: 1 }] = true;
-        assert_eq!(f.render_f0(), '▙');
+        assert_eq!(f.render_box()[0].1, '▙');
         f[Point { x: 0, y: 1 }] = false;
     }
     #[test]
@@ -161,13 +172,13 @@ mod test {
             }
             if pts.len() > 0 {
                 assert_ne!(
-                    f.render_f0(),
+                    f.render_box()[0].1,
                     ' ',
                     "defined char for point combo: {:?}",
                     pts
                 );
             } else {
-                assert_eq!(f.render_f0(), ' ');
+                assert_eq!(f.render_box()[0].1, ' ');
             }
         }
     }
@@ -177,14 +188,14 @@ mod test {
         f[Point { x: 0, y: 1 }] = true;
         f[Point { x: 1, y: 0 }] = true;
         f[Point { x: 1, y: 1 }] = true;
-        assert_eq!(f.render_f0(), '▟');
+        assert_eq!(f.render_box()[0].1, '▟');
     }
     #[test]
     fn test_compress() {
         let mut f = empty_frame();
         f[Point { x: 0, y: 0 }] = true;
         f[Point { x: 2, y: 0 }] = true;
-        let frame = f.render(' ');
+        let frame = f.render_box();
         assert_eq!(frame[0].0, Point { x: 0, y: 0 });
         assert_eq!(frame[1].0, Point { x: 1, y: 0 });
         assert_eq!(frame[2].0, Point { x: 2, y: 0 });
@@ -201,6 +212,6 @@ mod test {
                 h: 10,
             },
         );
-        assert_eq!(f.render(' ').len(), 16);
+        assert_eq!(f.render_box().len(), 16);
     }
 }
