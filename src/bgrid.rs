@@ -7,16 +7,16 @@ pub struct Frame {
     view: Mask,
 }
 pub trait Charset {
-    const SCALE: usize;
-    fn encode(&self, background: char, pts: &Vec<bool>) -> char;
+    const SCALE: (u32, u32);
+    fn encode(&self, bg: char, alive: &Vec<bool>) -> char;
 }
 
 pub struct BoxChset {}
 impl Charset for BoxChset {
-    const SCALE: usize = 2;
+    const SCALE: (u32, u32) = (2, 2);
 
     fn encode(&self, bg: char, alive: &Vec<bool>) -> char {
-        assert_eq!(alive.len(), Self::SCALE * 2);
+        assert_eq!(alive.len() as u32, Self::SCALE.0 * Self::SCALE.1);
         if alive.iter().all(|a| *a) {
             '█'
         } else if alive[0] && alive[1] && alive[2] {
@@ -52,6 +52,55 @@ impl Charset for BoxChset {
         }
     }
 }
+fn transpose<T>(v: &Vec<T>, w: u32, h: u32) -> Vec<T>
+where
+    T: Clone,
+{
+    assert_eq!(v.len() as u32, w * h);
+    let mut out = Vec::new();
+    out.reserve(v.len());
+    for y in 0..h {
+        for x in 0..w {
+            let val = v[(x * w + y) as usize].clone();
+            out.push(val);
+        }
+    }
+    out
+}
+
+pub struct BrailleChset {}
+impl BrailleChset {
+    fn calc_offset(alive: &Vec<bool>) -> u8 {
+        transpose(&alive, Self::SCALE.0, Self::SCALE.1)
+            .into_iter()
+            .enumerate()
+            .fold(0, |xs, (n, x)| {
+                let x = if x { 1 } else { 0 };
+                xs | (x << n)
+            })
+    }
+}
+impl Charset for BrailleChset {
+    const SCALE: (u32, u32) = (2, 4);
+
+    fn encode(&self, bg: char, alive: &Vec<bool>) -> char {
+        assert_eq!(alive.len() as u32, Self::SCALE.0 * Self::SCALE.1);
+        let off = Self::calc_offset(&alive) as u32;
+        if off == 0 {
+            bg
+        } else {
+            let ch = char::from_u32(0x2800 as u32 + off).unwrap();
+            println!(
+                "off: {} -> {} (a: {})",
+                off,
+                ch,
+                alive.iter().filter(|a| **a).count()
+            );
+            ch
+        }
+    }
+}
+
 type Rendered = Vec<(Point, char)>;
 
 impl Frame {
@@ -67,7 +116,11 @@ impl Frame {
     where
         C: Charset,
     {
-        let bounds = self.view.clone().scale(C::SCALE as u32);
+        let mut bounds = self.view.clone();
+        let (offx, offy) = C::SCALE;
+        bounds.w *= offx;
+        bounds.y *= offy;
+        let bounds = bounds;
         let maxh = self.view.h.min(self.pts.width());
         let maxw = self.view.w.min(self.pts.width());
         (0..maxh)
@@ -75,11 +128,11 @@ impl Frame {
                 let bounds = &bounds;
                 let charset = &charset;
                 (0..maxw).map(move |x| {
-                    let alive = (0..C::SCALE as u32)
+                    let alive = (0..offy)
                         .flat_map(|oy| {
-                            (0..C::SCALE as u32).map(move |ox| Point {
-                                x: (x * 2 + ox + self.view.x) as i64,
-                                y: (y * 2 + oy + self.view.y) as i64,
+                            (0..offx).map(move |ox| Point {
+                                x: (x * offx + ox + self.view.x) as i64,
+                                y: (y * offy + oy + self.view.y) as i64,
                             })
                         })
                         .map(|p| {
@@ -213,5 +266,14 @@ mod test {
             },
         );
         assert_eq!(f.render_box().len(), 16);
+    }
+    #[test]
+    fn test_brailleset() {
+        let mut f = empty_frame();
+        let render = |f: &Frame| f.render(' ', BrailleChset {})[0].1;
+        f[Point { x: 0, y: 0 }] = true;
+        assert_eq!(render(&f), '⠁');
+        f[Point { x: 0, y: 1 }] = true;
+        assert_eq!(render(&f), '⠃');
     }
 }

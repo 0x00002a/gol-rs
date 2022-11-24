@@ -24,6 +24,7 @@ use crate::bgrid::BoxChset;
 mod args;
 mod bgrid;
 mod gol;
+mod iter_util;
 
 type Board = gol::Board;
 
