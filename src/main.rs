@@ -1,6 +1,7 @@
 use std::io::{BufReader, Read};
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
 use std::{panic, sync};
@@ -122,6 +123,103 @@ fn check(r: i32) -> Result<()> {
         Ok(())
     }
 }
+fn run_event_loop(
+    running: &AtomicBool,
+    tx: Receiver<Event>,
+    bg: char,
+    scroll_inc: i64,
+) -> Result<()> {
+    let win = SessionWin::initscr();
+    win.clear();
+    win.refresh();
+    curs_set(0);
+    noecho();
+
+    defer! { running.store(false, sync::atomic::Ordering::SeqCst); }
+    start_color();
+    init_pair(0, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
+    init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
+
+    let mut offset = Point { x: 0, y: 0 };
+    let mut turn = 0;
+    while running.load(sync::atomic::Ordering::SeqCst) {
+        let ev = tx.recv().unwrap();
+        match ev {
+            Event::TurnEnd(b) => {
+                turn += 1;
+                offset.remap(b.width(), b.height());
+                let mut viewport = Mask {
+                    x: (offset.x) as u32,
+                    y: (offset.y) as u32,
+                    w: (win.get_max_x()) as u32,
+                    h: (win.get_max_y()) as u32,
+                };
+                if viewport.dx() % 2 == 1 {
+                    viewport.w -= 1;
+                }
+                if viewport.dy() % 2 == 1 {
+                    viewport.h -= 1;
+                }
+                let frame = Frame::new(b.clone(), viewport);
+                let screen_view = Mask {
+                    x: win.get_beg_x() as u32,
+                    y: win.get_beg_y() as u32,
+                    w: win.get_max_x() as u32,
+                    h: win.get_max_y() as u32,
+                };
+                win.color_set(0);
+                win.clear();
+                frame
+                    .render(bg)
+                    .into_iter()
+                    .map(|(pt, c)| {
+                        if !screen_view.contains(&pt) {
+                            Err(anyhow!(
+                                "tried to draw outside the viewport: {} not in {}",
+                                pt,
+                                screen_view
+                            ))
+                        } else {
+                            let r = check(win.mvaddstr(pt.y as i32, pt.x as i32, String::from(c)))
+                                .map_err(|e| {
+                                    anyhow!("check failed pt {} v: {} e: {}", pt, screen_view, e)
+                                });
+                            if r.is_ok()
+                                || pt.x == (win.get_max_x() - 1) as i64
+                                    && pt.y == (win.get_max_y() - 1) as i64
+                            {
+                                Ok(())
+                            } else {
+                                r
+                            }
+                        }
+                    })
+                    .collect::<Result<_>>()?;
+                win.color_set(3);
+                win.mvaddstr(0, 0, format!("turn  {}", turn));
+                win.mvaddstr(1, 0, format!("alive {}", b.alive()));
+                win.refresh();
+            }
+            Event::KeyPress(Input::KeyLeft) | Event::KeyPress(Input::Character('h')) => {
+                offset.x -= scroll_inc
+            }
+            Event::KeyPress(Input::KeyRight) | Event::KeyPress(Input::Character('l')) => {
+                offset.x += scroll_inc
+            }
+            Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
+                offset.y -= scroll_inc
+            }
+            Event::KeyPress(Input::KeyDown) | Event::KeyPress(Input::Character('j')) => {
+                offset.y += scroll_inc
+            }
+            Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
+                running.store(false, sync::atomic::Ordering::SeqCst);
+            }
+            _ => (),
+        }
+    }
+    Ok(())
+}
 fn main() -> Result<()> {
     let panic_buf = Arc::new(Mutex::new(String::new()));
     panic::set_hook({
@@ -136,11 +234,9 @@ fn main() -> Result<()> {
         let threads = args.threads.unwrap_or_else(|| (num_cpus::get() - 2) as u16);
         let mut infile = std::fs::File::open(args.input)?;
         let initial = read_pgm(&mut infile)?;
-        let mut turn = 0;
         let (sx, tx) = std::sync::mpsc::channel();
         let bsx = sx.clone();
         let running = AtomicBool::new(true);
-        let scroll_inc = (initial.width() / 100) as i64;
         thread::scope(|s| -> Result<()> {
             let mut curr = initial.clone();
             let running = &running;
@@ -160,11 +256,6 @@ fn main() -> Result<()> {
                 Ok(())
             });
 
-            let win = SessionWin::initscr();
-            win.clear();
-            win.refresh();
-            curs_set(0);
-            noecho();
             let ksx = sx.clone();
             s.spawn(move || {
                 let w = pancurses::newwin(0, 0, 0, 0);
@@ -185,97 +276,9 @@ fn main() -> Result<()> {
                     }
                 }
             });
-            {
-                defer! { running.store(false, sync::atomic::Ordering::SeqCst); }
-                start_color();
-                init_pair(0, pancurses::COLOR_WHITE, pancurses::COLOR_BLACK);
-                init_pair(3, pancurses::COLOR_GREEN, pancurses::COLOR_BLACK);
 
-                let mut offset = Point { x: 0, y: 0 };
-                while running.load(sync::atomic::Ordering::SeqCst) {
-                    let ev = tx.recv().unwrap();
-                    match ev {
-                        Event::TurnEnd(b) => {
-                            turn += 1;
-                            offset.remap(b.width(), b.height());
-                            let mut viewport = Mask {
-                                x: (offset.x) as u32,
-                                y: (offset.y) as u32,
-                                w: (win.get_max_x()) as u32,
-                                h: (win.get_max_y()) as u32,
-                            };
-                            if viewport.dx() % 2 == 1 {
-                                viewport.w -= 1;
-                            }
-                            if viewport.dy() % 2 == 1 {
-                                viewport.h -= 1;
-                            }
-                            let frame = Frame::new(b.clone(), viewport);
-                            let screen_view = Mask {
-                                x: win.get_beg_x() as u32,
-                                y: win.get_beg_y() as u32,
-                                w: win.get_max_x() as u32,
-                                h: win.get_max_y() as u32,
-                            };
-                            win.color_set(0);
-                            win.clear();
-                            frame
-                                .render(args.background)
-                                .into_iter()
-                                .map(|(pt, c)| {
-                                    if !screen_view.contains(&pt) {
-                                        Err(anyhow!(
-                                            "tried to draw outside the viewport: {} not in {}",
-                                            pt,
-                                            screen_view
-                                        ))
-                                    } else {
-                                        let r = check(win.mvaddstr(
-                                            pt.y as i32,
-                                            pt.x as i32,
-                                            String::from(c),
-                                        ))
-                                        .map_err(|e| {
-                                            anyhow!(
-                                                "check failed pt {} v: {} e: {}",
-                                                pt,
-                                                screen_view,
-                                                e
-                                            )
-                                        });
-                                        if r.is_ok()
-                                            || pt.x == (win.get_max_x() - 1) as i64
-                                                && pt.y == (win.get_max_y() - 1) as i64
-                                        {
-                                            Ok(())
-                                        } else {
-                                            r
-                                        }
-                                    }
-                                })
-                                .collect::<Result<_>>()?;
-                            win.color_set(3);
-                            win.mvaddstr(0, 0, format!("turn  {}", turn));
-                            win.mvaddstr(1, 0, format!("alive {}", b.alive()));
-                            win.refresh();
-                        }
-                        Event::KeyPress(Input::KeyLeft)
-                        | Event::KeyPress(Input::Character('h')) => offset.x -= scroll_inc,
-                        Event::KeyPress(Input::KeyRight)
-                        | Event::KeyPress(Input::Character('l')) => offset.x += scroll_inc,
-                        Event::KeyPress(Input::KeyUp) | Event::KeyPress(Input::Character('k')) => {
-                            offset.y -= scroll_inc
-                        }
-                        Event::KeyPress(Input::KeyDown)
-                        | Event::KeyPress(Input::Character('j')) => offset.y += scroll_inc,
-                        Event::KeyPress(Input::KeyEIC) | Event::KeyPress(Input::Character('q')) => {
-                            running.store(false, sync::atomic::Ordering::SeqCst);
-                        }
-                        _ => (),
-                    }
-                }
-            }
-            Ok(())
+            let scroll_inc = (initial.width() / 100) as i64;
+            run_event_loop(&running, tx, args.background, scroll_inc)
         })
     });
     match rs {
