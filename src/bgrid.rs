@@ -117,22 +117,22 @@ impl Frame {
         C: Charset,
     {
         let mut bounds = self.view.clone();
-        let (offx, offy) = C::SCALE;
-        bounds.w *= offx;
-        bounds.y *= offy;
+        let (scalex, scaley) = C::SCALE;
+        bounds.w *= scalex;
+        bounds.y *= scaley;
         let bounds = bounds;
-        let maxh = self.view.h.min(self.pts.width());
-        let maxw = self.view.w.min(self.pts.width());
+        let maxh = self.view.h.min(self.pts.height() / scaley);
+        let maxw = self.view.w.min(self.pts.width() / scalex);
         (0..maxh)
             .flat_map(|y| {
                 let bounds = &bounds;
                 let charset = &charset;
                 (0..maxw).map(move |x| {
-                    let alive = (0..offy)
+                    let alive = (0..scaley)
                         .flat_map(|oy| {
-                            (0..offx).map(move |ox| Point {
-                                x: (x * offx + ox + self.view.x) as i64,
-                                y: (y * offy + oy + self.view.y) as i64,
+                            (0..scalex).map(move |ox| Point {
+                                x: (x * scalex + ox + self.view.x) as i64,
+                                y: (y * scaley + oy + self.view.y) as i64,
                             })
                         })
                         .map(|p| {
@@ -194,7 +194,6 @@ mod test {
     fn test_individual() {
         let mut f = empty_frame();
         f[Point { x: 0, y: 0 }] = true;
-        assert_eq!(f.render_box().len(), 16);
         assert_eq!(f.render_box()[0].1, '▘');
 
         f[Point { x: 1, y: 1 }] = true;
@@ -251,8 +250,8 @@ mod test {
         let frame = f.render_box();
         assert_eq!(frame[0].0, Point { x: 0, y: 0 });
         assert_eq!(frame[1].0, Point { x: 1, y: 0 });
-        assert_eq!(frame[2].0, Point { x: 2, y: 0 });
-        assert_eq!(frame[3].0, Point { x: 3, y: 0 });
+        assert_eq!(frame[2].0, Point { x: 0, y: 1 });
+        assert_eq!(frame[3].0, Point { x: 1, y: 1 });
     }
     #[test]
     fn test_smaller_frame_than_mask() {
@@ -265,7 +264,21 @@ mod test {
                 h: 10,
             },
         );
-        assert_eq!(f.render_box().len(), 16);
+        assert_eq!(f.render_box().len(), 4);
+    }
+
+    #[test]
+    fn test_view_smaller_than_remapped_block() {
+        let f = Frame::new(
+            Board::new(10, (0..100).map(|_| false).collect_vec()),
+            Mask {
+                x: 0,
+                y: 0,
+                w: 2,
+                h: 2,
+            },
+        );
+        assert_eq!(f.render_box().len(), 4);
     }
     #[test]
     fn test_brailleset() {
