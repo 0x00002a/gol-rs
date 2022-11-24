@@ -133,7 +133,7 @@ fn main() -> Result<()> {
     });
     let rs = panic::catch_unwind(|| {
         let args = Args::parse();
-        let threads = args.threads.unwrap_or_else(|| num_cpus::get() as u16);
+        let threads = args.threads.unwrap_or_else(|| (num_cpus::get() - 2) as u16);
         let mut infile = std::fs::File::open(args.input)?;
         let initial = read_pgm(&mut infile)?;
         let mut turn = 0;
